@@ -1,0 +1,50 @@
+# Sensitive credentials and sessions
+.env
+*.env
+*.pkl
+session.pkl
+pesu-notes/session.pkl
+pesu-notes/scraper/session.pkl
+pesu-notes/.env
+
+# Local database & state
+*.db
+*.sqlite
+*.sqlite3
+betterpesu.db
+data/betterpesu.db
+courses.json
+**/courses.json
+data/
+pesu-notes/data/
+
+# Course materials & slides (downloaded locally per student)
+slides/
+slides
+pesu-notes/slides/
+*.pdf
+*.pptx
+*.ppt
+
+# Backups
+pesu-notes.backup/
+*.bak
+*.part
+
+# Python & environments
+venv/
+pesu-notes/venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# Build & packaging
+build/
+dist/
+*.spec.bak
+
+# OS specific
+.DS_Store
+Thumbs.db

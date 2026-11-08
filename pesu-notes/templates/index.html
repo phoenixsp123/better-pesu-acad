@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Better PESU Acad</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="glow glow-one"></div>
+  <div class="glow glow-two"></div>
+
+  <div class="shell">
+    <!-- SIDEBAR -->
+    <aside class="sidebar glass">
+      <div class="brand">
+        <span class="brand-icon">✦</span>
+        <span>better<span class="accent">PESU</span><small>ACADEMIC WORKSPACE</small></span>
+      </div>
+
+      <!-- Sync Card -->
+      <div class="sync-card">
+        <div class="sync-title">↻ &nbsp; Course materials</div>
+        <div id="sync-status" class="sync-status" role="status" aria-live="polite">Checking sync status…</div>
+        <label for="sync-semester" class="sync-semester-label">Choose semester</label>
+        <select id="sync-semester" class="sync-semester" aria-label="Semester to sync">
+          <option value="">All semesters</option>
+        </select>
+        <button id="sync-button" class="sync-button" type="button">↻ Sync Materials</button>
+        <div id="sync-progress-panel" class="sync-progress-panel" hidden>
+          <div class="sync-progress-heading">
+            <span id="sync-progress-label">Preparing sync…</span>
+            <strong id="sync-percent">—</strong>
+          </div>
+          <div id="sync-progress-track" class="sync-progress-track" role="progressbar" aria-label="Sync progress" aria-valuemin="0" aria-valuemax="100">
+            <div id="sync-progress-fill" class="sync-progress-fill"></div>
+          </div>
+          <div id="sync-current-subject" class="sync-current-subject"></div>
+          <div class="sync-progress-meta">
+            <span id="sync-count">Discovering materials…</span>
+            <span id="sync-eta">Estimating phase…</span>
+          </div>
+          <div id="sync-files-count" class="sync-files-count"></div>
+        </div>
+      </div>
+
+      <!-- Main Section Switcher Tabs -->
+      <div class="side-heading">STUDENT WORKSPACE</div>
+      <div class="personal-tabs app-module-tabs">
+        <button id="tab-nav-study" class="module-nav-btn active">Study Space</button>
+        <button id="tab-nav-attendance" class="module-nav-btn">Attendance</button>
+        <button id="tab-nav-timetable" class="module-nav-btn">Timetable</button>
+        <button id="tab-nav-assignments" class="module-nav-btn">Assignments</button>
+        <button id="tab-nav-grades" class="module-nav-btn">Grades</button>
+        <button id="tab-nav-analytics" class="module-nav-btn">Analytics</button>
+        <button id="tab-nav-settings" class="module-nav-btn">Settings</button>
+      </div>
+
+      <!-- Library Section (Active when in Study Space) -->
+      <div id="sidebar-library-section">
+        <div class="side-heading">YOUR LIBRARY</div>
+        <div class="personal-tabs">
+          <button id="tab-library" class="active">Library</button>
+          <button id="tab-bookmarks">Saved</button>
+          <button id="tab-recent">Recent</button>
+        </div>
+        <label class="search-box">
+          <span>⌕</span>
+          <input id="search" placeholder="Search courses & slides" aria-label="Search courses and slides">
+        </label>
+        <div id="navigation" class="navigation">
+          <div class="empty">Loading courses…</div>
+        </div>
+        <div id="personal-side" class="navigation" hidden></div>
+      </div>
+
+      <div class="side-footer">
+        <div class="student-mini-status">
+          <span class="user-indicator-dot">●</span>
+          <span id="sidebar-student-name">PESU Student</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN VIEW AREA -->
+    <main class="main">
+      <!-- 1. PRIMARY VIEW: STUDY SPACE (The original workspace with PDF Viewer & Timer) -->
+      <div id="view-study-space" class="module-view active">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">YOUR STUDY SPACE</div>
+            <h1>Study smarter<span class="accent">.</span></h1>
+            <p>Everything you need, all in one place.</p>
+          </div>
+          <div class="top-chip" id="focus-chip">✦ &nbsp; Focus mode ready</div>
+        </header>
+
+        <section class="workspace glass">
+          <div class="workspace-head">
+            <div>
+              <div class="eyebrow">NOW VIEWING</div>
+              <h2 id="document-title">Choose a lecture to get started</h2>
+              <div id="document-path" class="subtle">Browse your courses on the left.</div>
+            </div>
+            <div class="doc-actions">
+              <button id="study-fullscreen" class="action hidden" type="button" aria-label="Enter fullscreen study mode" title="Fullscreen study mode">⛶ Focus View</button>
+              <button id="bookmark-current" class="action hidden" type="button">☆ Save</button>
+              <a id="open-link" class="action hidden" target="_blank" rel="noopener">↗ Open</a>
+              <a id="download-link" class="action hidden" download>↓ Download</a>
+            </div>
+          </div>
+
+          <div id="viewer-placeholder" class="viewer-placeholder">
+            <div class="placeholder-icon">▤</div>
+            <h3>Your study session starts here</h3>
+            <p>Select a PDF from the library to preview it.</p>
+          </div>
+
+          <iframe id="pdf-viewer" title="Lecture PDF viewer" class="pdf-viewer hidden"></iframe>
+
+          <div class="workspace-bottom">
+            <span id="file-count">Ready when you are</span>
+            <button id="study-exit" class="study-exit" type="button" aria-label="Exit fullscreen study mode">⤢ Exit</button>
+            <div class="timer-wrap">
+              <div id="timer-panel" class="timer-panel hidden">
+                <div class="timer-label">STAY IN THE ZONE</div>
+                <div class="timer-modes">
+                  <button data-mode="focus" class="mode active">Focus</button>
+                  <button data-mode="short" class="mode">Short break</button>
+                  <button data-mode="long" class="mode">Long break</button>
+                </div>
+                <div id="timer-big" class="timer-big">25:00</div>
+                <div class="timer-controls">
+                  <button id="reset-timer">↺ Reset</button>
+                  <button id="toggle-timer">▶ Start</button>
+                </div>
+                <label class="duration-label">Focus minutes <input id="custom-minutes" type="number" min="1" max="180" value="25"></label>
+                <button id="apply-minutes" class="apply-minutes">Apply duration</button>
+                <div id="sessions" class="sessions">0 focus sessions completed</div>
+              </div>
+              <button id="timer-pill" class="timer-pill" aria-expanded="false" aria-controls="timer-panel">
+                <span>◷</span><strong id="timer-small">25:00</strong><span id="timer-status">▶</span><span>⌃</span>
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 2. ATTENDANCE HUB VIEW -->
+      <div id="view-attendance" class="module-view hidden">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">ACADEMIC TRACKING</div>
+            <h1>Attendance Hub<span class="accent">.</span></h1>
+            <p>Live attendance percentage, bunk calculator, and what-if simulation.</p>
+          </div>
+          <div class="module-top-actions">
+            <button id="btn-sync-attendance" class="action">↻ Sync from PESU</button>
+            <button id="btn-manual-attendance" class="action">+ Add Subject</button>
+            <button id="btn-export-attendance-csv" class="action">↓ Export CSV</button>
+            <button id="btn-import-attendance-csv" class="action">↑ Import CSV</button>
+          </div>
+        </header>
+
+        <div class="attendance-container">
+          <div class="attendance-cards-grid" id="attendance-cards-grid">
+            <div class="empty">Loading attendance records…</div>
+          </div>
+
+          <!-- Bunk Calculator & Simulator Panel -->
+          <div class="attendance-sim-box glass">
+            <div class="timer-label">ATTENDANCE CALCULATOR & BUNK SIMULATOR</div>
+            <div class="sim-row">
+              <label class="sim-field">Subject
+                <select id="sim-subject-select" class="sync-semester">
+                  <option value="">Custom inputs</option>
+                </select>
+              </label>
+              <label class="sim-field">Attended
+                <input id="sim-input-attended" type="number" min="0" value="25" class="custom-input-sm">
+              </label>
+              <label class="sim-field">Conducted
+                <input id="sim-input-conducted" type="number" min="0" value="30" class="custom-input-sm">
+              </label>
+              <label class="sim-field">Target %
+                <input id="sim-input-target" type="number" min="1" max="100" value="75" class="custom-input-sm">
+              </label>
+            </div>
+
+            <div class="personal-tabs sim-tabs">
+              <button class="sim-tab-btn active" data-sim-tab="bunk">Bunk Classes</button>
+              <button class="sim-tab-btn" data-sim-tab="target">Classes Needed</button>
+              <button class="sim-tab-btn" data-sim-tab="chain">Sequence Simulator</button>
+            </div>
+
+            <div id="sim-body-bunk" class="sim-tab-body">
+              <label class="duration-label">What if I miss <input id="sim-bunk-count" type="number" min="1" max="40" value="2"> classes?</label>
+              <div id="sim-bunk-result" class="sim-stat-box">—</div>
+            </div>
+
+            <div id="sim-body-target" class="sim-tab-body hidden">
+              <div id="sim-target-result" class="sim-stat-box">—</div>
+            </div>
+
+            <div id="sim-body-chain" class="sim-tab-body hidden">
+              <label class="duration-label">Enter sequence (e.g. attend, bunk, attend):</label>
+              <input id="sim-chain-input" class="search-box-input-full" placeholder="attend, bunk, attend">
+              <button id="btn-run-chain" class="apply-minutes">Run Simulation</button>
+              <div id="sim-chain-output" class="chain-steps-list"></div>
+            </div>
+
+            <div class="matrix-heading">Projection for Next 5 Classes</div>
+            <div id="sim-matrix-grid" class="sim-matrix-grid"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. TIMETABLE VIEW -->
+      <div id="view-timetable" class="module-view hidden">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">SCHEDULE</div>
+            <h1>Class Timetable<span class="accent">.</span></h1>
+            <p>Your weekly lecture and lab period schedule.</p>
+          </div>
+          <button id="btn-add-period" class="action">+ Add Period</button>
+        </header>
+
+        <div class="personal-tabs" id="tt-days">
+          <button class="tt-day-btn active" data-day="0">Monday</button>
+          <button class="tt-day-btn" data-day="1">Tuesday</button>
+          <button class="tt-day-btn" data-day="2">Wednesday</button>
+          <button class="tt-day-btn" data-day="3">Thursday</button>
+          <button class="tt-day-btn" data-day="4">Friday</button>
+          <button class="tt-day-btn" data-day="5">Saturday</button>
+        </div>
+
+        <div class="timetable-grid glass" id="timetable-display-grid">
+          <div class="empty">No periods for this day. Click "+ Add Period" to add one.</div>
+        </div>
+      </div>
+
+      <!-- 4. ASSIGNMENTS VIEW -->
+      <div id="view-assignments" class="module-view hidden">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">PLANNER</div>
+            <h1>Assignments Tracker<span class="accent">.</span></h1>
+            <p>Keep track of course assignments, lab reports, and deadlines.</p>
+          </div>
+        </header>
+
+        <section class="personal-panel glass">
+          <h2>Add new assignment</h2>
+          <form id="assignment-form" class="assignment-form">
+            <input id="assignment-title" placeholder="Assignment name" required maxlength="140">
+            <select id="assignment-subject" required>
+              <option value="">Choose subject</option>
+            </select>
+            <input id="assignment-date" type="date" required>
+            <select id="assignment-priority">
+              <option value="low">Low Priority</option>
+              <option value="medium" selected>Medium Priority</option>
+              <option value="high">High Priority</option>
+            </select>
+            <button class="personal-button" type="submit">+ Add assignment</button>
+          </form>
+
+          <div class="personal-tabs" id="asg-filters">
+            <button class="asg-filter-btn active" data-filter="all">All</button>
+            <button class="asg-filter-btn" data-filter="pending">Pending</button>
+            <button class="asg-filter-btn" data-filter="completed">Completed</button>
+          </div>
+
+          <div id="assignment-list" class="personal-list"></div>
+        </section>
+      </div>
+
+      <!-- 5. GRADES & CIE VIEW -->
+      <div id="view-grades" class="module-view hidden">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">EVALUATION</div>
+            <h1>Grades & CIE<span class="accent">.</span></h1>
+            <p>Autonomous SGPA estimator and internal assessment calculator.</p>
+          </div>
+        </header>
+
+        <div class="grades-grid">
+          <div class="personal-panel glass">
+            <h2>Semester SGPA Estimator</h2>
+            <div id="sgpa-rows" class="sgpa-rows-container"></div>
+            <div class="sgpa-actions">
+              <button id="btn-add-sgpa-row" class="action">+ Add Subject</button>
+              <button id="btn-calc-sgpa" class="sync-button" style="width: auto; padding: 10px 20px;">Calculate SGPA</button>
+            </div>
+            <div id="sgpa-score-box" class="grade-result-pill">Estimated SGPA: —</div>
+          </div>
+
+          <div class="personal-panel glass">
+            <h2>CIE Internal Marks (Out of 50)</h2>
+            <form id="cie-form" class="cie-form-layout">
+              <label>ISA 1 (Scaled) <input id="cie-isa1" type="number" step="0.5" min="0" max="20" value="16" class="custom-input-sm"></label>
+              <label>ISA 2 (Scaled) <input id="cie-isa2" type="number" step="0.5" min="0" max="20" value="17" class="custom-input-sm"></label>
+              <label>Assignments / Quizzes <input id="cie-asg" type="number" step="0.5" min="0" max="10" value="9" class="custom-input-sm"></label>
+              <label>Lab / Project <input id="cie-lab" type="number" step="0.5" min="0" max="10" value="5" class="custom-input-sm"></label>
+              <button type="submit" class="sync-button">Calculate CIE</button>
+            </form>
+            <div id="cie-result-box" class="grade-result-pill">CIE Score: —</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. ANALYTICS VIEW -->
+      <div id="view-analytics" class="module-view hidden">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">PRODUCTIVITY</div>
+            <h1>Study Analytics<span class="accent">.</span></h1>
+            <p>Your focus habits, Pomodoro sessions, and weekly trends.</p>
+          </div>
+        </header>
+
+        <div class="analytics-stat-row">
+          <div class="stat-box glass">
+            <div class="side-heading">TOTAL FOCUS TIME</div>
+            <div id="stat-total-mins" class="stat-number">0 min</div>
+          </div>
+          <div class="stat-box glass">
+            <div class="side-heading">TODAY'S FOCUS</div>
+            <div id="stat-today-mins" class="stat-number">0 min</div>
+          </div>
+          <div class="stat-box glass">
+            <div class="side-heading">COMPLETED SESSIONS</div>
+            <div id="stat-completed-sessions" class="stat-number">0</div>
+          </div>
+        </div>
+
+        <div class="personal-panel glass">
+          <h2>Daily Study Trend (Last 7 Days)</h2>
+          <div id="analytics-trend-bars" class="trend-bars-box"></div>
+        </div>
+      </div>
+
+      <!-- 7. SETTINGS VIEW -->
+      <div id="view-settings" class="module-view hidden">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">PREFERENCES</div>
+            <h1>Settings & Profile<span class="accent">.</span></h1>
+            <p>Manage your account, local data, and application status.</p>
+          </div>
+        </header>
+
+        <div class="personal-panel glass">
+          <h2>PESU Academy Account</h2>
+          <div id="settings-profile-card" class="profile-card-content">
+            <p class="subtle">Sign in to automatically sync your slides and attendance.</p>
+          </div>
+          <div class="settings-btn-row">
+            <button id="btn-login-modal" class="sync-button" style="width: auto; padding: 10px 18px;">Connect Account</button>
+            <button id="btn-logout" class="action hidden">Log Out</button>
+          </div>
+        </div>
+
+        <div class="personal-panel glass">
+          <h2>Application & Storage</h2>
+          <div class="settings-row">
+            <div>
+              <strong>LibreOffice Status</strong>
+              <div class="subtle" id="settings-lo-desc">Required for PPTX to PDF conversion</div>
+            </div>
+            <span id="settings-lo-badge" class="badge-safe">Checking…</span>
+          </div>
+          <div class="settings-row">
+            <div>
+              <strong>Local Data Folder</strong>
+              <div class="subtle" id="settings-data-path">—</div>
+            </div>
+            <button id="btn-open-folder" class="action">Open in Finder/Explorer</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-note">✧ A calmer way to study, one lecture at a time.</div>
+    </main>
+  </div>
+
+  <!-- LOGIN MODAL -->
+  <div id="modal-login" class="modal-backdrop hidden">
+    <div class="modal-dialog glass">
+      <div class="modal-header">
+        <h3>Connect PESU Academy</h3>
+        <button class="modal-close" onclick="closeModal('modal-login')">✕</button>
+      </div>
+      <form id="form-login" class="modal-body">
+        <p class="subtle">Your credentials are used locally to establish an authenticated session and are never sent to third-party servers.</p>
+        <label class="form-label">PRN / SRN / Username
+          <input id="login-username" class="search-box-input-full" placeholder="e.g. PES1UG22CS001" required>
+        </label>
+        <label class="form-label">Password
+          <input id="login-password" type="password" class="search-box-input-full" placeholder="••••••••••••" required>
+        </label>
+        <div id="login-error" class="error-text hidden"></div>
+        <div class="modal-footer">
+          <button type="button" class="action" onclick="closeModal('modal-login')">Cancel</button>
+          <button type="submit" id="btn-do-login" class="sync-button" style="width: auto; padding: 10px 18px;">Log In</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MANUAL ATTENDANCE MODAL -->
+  <div id="modal-attendance" class="modal-backdrop hidden">
+    <div class="modal-dialog glass">
+      <div class="modal-header">
+        <h3>Add / Edit Subject Attendance</h3>
+        <button class="modal-close" onclick="closeModal('modal-attendance')">✕</button>
+      </div>
+      <form id="form-attendance" class="modal-body">
+        <label class="form-label">Subject Code
+          <input id="att-code" class="search-box-input-full" placeholder="e.g. UE25CS242A" required>
+        </label>
+        <label class="form-label">Subject Title
+          <input id="att-title" class="search-box-input-full" placeholder="e.g. Operating System" required>
+        </label>
+        <div class="form-grid-2">
+          <label class="form-label">Attended
+            <input id="att-attended" type="number" min="0" value="20" class="custom-input-sm" required>
+          </label>
+          <label class="form-label">Conducted
+            <input id="att-conducted" type="number" min="0" value="25" class="custom-input-sm" required>
+          </label>
+        </div>
+        <label class="form-label">Target Percentage (%)
+          <input id="att-target" type="number" min="1" max="100" value="75" class="custom-input-sm" required>
+        </label>
+        <div class="modal-footer">
+          <button type="button" class="action" onclick="closeModal('modal-attendance')">Cancel</button>
+          <button type="submit" class="sync-button" style="width: auto; padding: 10px 18px;">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CSV IMPORT MODAL -->
+  <div id="modal-csv" class="modal-backdrop hidden">
+    <div class="modal-dialog glass">
+      <div class="modal-header">
+        <h3>Import Attendance CSV</h3>
+        <button class="modal-close" onclick="closeModal('modal-csv')">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="subtle">Select a CSV file containing columns for Subject Code, Subject Name, Attended, and Conducted.</p>
+        <input type="file" id="csv-file-input" accept=".csv" class="search-box-input-full">
+        <div class="modal-footer">
+          <button type="button" class="action" onclick="closeModal('modal-csv')">Cancel</button>
+          <button id="btn-do-csv" class="sync-button" style="width: auto; padding: 10px 18px;">Upload & Import</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
