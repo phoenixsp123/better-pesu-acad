@@ -40,6 +40,95 @@ const fileURL = path => '/files/' + path.replace(/^slides[\\/]/i, '').split(/[\\
 // 1. PRIMARY STUDY WORKSPACE & PDF VIEWER
 // =========================================================
 
+let currentPdfPage = 1;
+let totalPdfPages = 1;
+
+function updatePdfPageUI() {
+  const indicator = $('pdf-page-indicator');
+  if (indicator) {
+    if (totalPdfPages > 1) {
+      indicator.textContent = `Page ${currentPdfPage} / ${totalPdfPages}`;
+    } else {
+      indicator.textContent = `Page ${currentPdfPage}`;
+    }
+  }
+  const prevBtn = $('btn-pdf-prev');
+  if (prevBtn) prevBtn.disabled = currentPdfPage <= 1;
+  const nextBtn = $('btn-pdf-next');
+  if (nextBtn) nextBtn.disabled = (totalPdfPages > 1 && currentPdfPage >= totalPdfPages);
+}
+
+function goToPdfPage(pageNum, scrollDirection = null) {
+  if (!currentDoc) return;
+  const viewer = $('pdf-viewer');
+  if (!viewer || viewer.classList.contains('hidden')) return;
+
+  const maxPages = totalPdfPages > 1 ? totalPdfPages : 999;
+  pageNum = Math.max(1, Math.min(maxPages, pageNum));
+  if (pageNum === currentPdfPage && totalPdfPages > 1) return;
+
+  const prevPage = currentPdfPage;
+  currentPdfPage = pageNum;
+  updatePdfPageUI();
+
+  const baseUrl = fileURL(currentDoc);
+  const targetUrl = `${baseUrl}#page=${currentPdfPage}&toolbar=1&navpanes=0`;
+
+  // 1. Update hash on iframe location
+  try {
+    if (viewer.contentWindow?.location) {
+      viewer.contentWindow.location.replace(targetUrl);
+    } else {
+      viewer.src = targetUrl;
+    }
+  } catch (_) {
+    viewer.src = targetUrl;
+  }
+
+  // 2. Direct scroll inside iframe (WebKit same-origin)
+  try {
+    const win = viewer.contentWindow;
+    if (win) {
+      const docHeight = win.document?.documentElement?.scrollHeight || win.document?.body?.scrollHeight;
+      if (docHeight && totalPdfPages > 1) {
+        const pageHeight = docHeight / totalPdfPages;
+        const targetScroll = (currentPdfPage - 1) * pageHeight;
+        win.scrollTo({ top: targetScroll, behavior: 'smooth' });
+      } else {
+        const isNext = scrollDirection === 'next' || currentPdfPage > prevPage;
+        const step = isNext ? (win.innerHeight * 0.9) : (-win.innerHeight * 0.9);
+        win.scrollBy({ top: step, behavior: 'smooth' });
+      }
+    }
+  } catch (_) {}
+
+  // 3. Dispatch keyboard event into iframe for native PDF plugin
+  try {
+    const isNext = scrollDirection === 'next' || currentPdfPage > prevPage;
+    const key = isNext ? 'PageDown' : 'PageUp';
+    const code = isNext ? 'PageDown' : 'PageUp';
+    const keyCode = isNext ? 34 : 33;
+    const evt = new KeyboardEvent('keydown', {
+      key: key,
+      code: code,
+      keyCode: keyCode,
+      which: keyCode,
+      bubbles: true,
+      cancelable: true
+    });
+    viewer.contentDocument?.dispatchEvent(evt);
+    viewer.contentWindow?.dispatchEvent(evt);
+  } catch (_) {}
+}
+
+function nextPdfPage() {
+  goToPdfPage(currentPdfPage + 1, 'next');
+}
+
+function prevPdfPage() {
+  goToPdfPage(currentPdfPage - 1, 'prev');
+}
+
 function openFile(file, title, breadcrumb, button) {
   if (!file.path || !String(file.name || file.path).toLowerCase().endsWith('.pdf')) return;
   selectedFile?.classList.remove('selected');
@@ -47,11 +136,27 @@ function openFile(file, title, breadcrumb, button) {
   button?.classList.add('selected');
 
   currentDoc = file.path;
-  const url = fileURL(file.path);
+  currentPdfPage = 1;
+  totalPdfPages = 1;
+  updatePdfPageUI();
+
+  // Query PDF pages in background
+  fetch(`/api/files/pages?path=${encodeURIComponent(file.path)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.pages && currentDoc === file.path) {
+        totalPdfPages = Math.max(1, Number(data.pages) || 1);
+        updatePdfPageUI();
+      }
+    })
+    .catch(() => {});
+
+  const url = `${fileURL(file.path)}#page=1`;
 
   const viewer = $('pdf-viewer');
   viewer.src = url;
   viewer.classList.remove('hidden');
+  $('pdf-page-controls')?.classList.remove('hidden');
   $('study-fullscreen')?.classList.remove('hidden');
   $('bookmark-current')?.classList.remove('hidden');
   $('btn-open-native')?.classList.remove('hidden');
@@ -219,6 +324,69 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && isFocusMode) {
     e.preventDefault();
     setStudyFocusMode(false);
+  }
+});
+
+// PDF Keyboard Navigation (Right Arrow: Next Page / Left Arrow: Prev Page)
+function handlePdfKeyNavigation(e) {
+  // Never intercept when typing into an input, textarea, select, or contenteditable
+  const activeEl = document.activeElement;
+  const target = e.target;
+  const isTyping = el => {
+    if (!el) return false;
+    const tag = (el.tagName || '').toUpperCase();
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+  };
+  if (isTyping(activeEl) || isTyping(target)) {
+    return;
+  }
+
+  const viewer = $('pdf-viewer');
+  if (!viewer || viewer.classList.contains('hidden') || !currentDoc) {
+    return;
+  }
+
+  if (e.key === 'ArrowRight' || e.code === 'ArrowRight') {
+    e.preventDefault();
+    nextPdfPage();
+  } else if (e.key === 'ArrowLeft' || e.code === 'ArrowLeft') {
+    e.preventDefault();
+    prevPdfPage();
+  }
+}
+
+document.addEventListener('keydown', handlePdfKeyNavigation, true);
+
+// Also attach inside iframe upon load so focus inside the PDF plugin also catches arrow keys
+const pdfViewerEl = $('pdf-viewer');
+if (pdfViewerEl) {
+  pdfViewerEl.addEventListener('load', () => {
+    try {
+      pdfViewerEl.contentDocument?.addEventListener('keydown', handlePdfKeyNavigation, true);
+      pdfViewerEl.contentWindow?.addEventListener('keydown', handlePdfKeyNavigation, true);
+    } catch (_) {}
+  });
+}
+
+// Wire up PDF Page navigation buttons
+$('btn-pdf-prev')?.addEventListener('click', e => {
+  e.preventDefault();
+  prevPdfPage();
+});
+
+$('btn-pdf-next')?.addEventListener('click', e => {
+  e.preventDefault();
+  nextPdfPage();
+});
+
+$('pdf-page-indicator')?.addEventListener('click', () => {
+  const maxP = totalPdfPages > 1 ? totalPdfPages : 999;
+  const val = prompt(`Go to page (1 - ${maxP}):`, String(currentPdfPage));
+  if (val) {
+    const num = parseInt(val, 10);
+    if (!isNaN(num) && num >= 1) {
+      goToPdfPage(num);
+    }
   }
 });
 

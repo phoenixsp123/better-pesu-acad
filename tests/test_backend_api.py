@@ -259,6 +259,12 @@ def test_file_serving_and_actions(test_client):
     res_non = client.post("/api/files/open-native", json={"path": "Sem-3/OS/nonexistent.pdf"})
     assert res_non.status_code == 404
 
+    # PDF page count endpoint
+    res_pages = client.get("/api/files/pages?path=Sem-3/OS/sample.pdf")
+    assert res_pages.status_code == 200
+    assert "pages" in res_pages.get_json()
+    assert res_pages.get_json()["pages"] >= 1
+
 
 def test_profile_update_and_resolution(test_client):
     client, cfg = test_client

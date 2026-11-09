@@ -266,6 +266,25 @@ def create_app(config: Optional[Config] = None) -> Flask:
             return jsonify({"error": "File not found"}), 404
         return send_from_directory(target.parent, target.name, as_attachment=True, download_name=target.name)
 
+    @app.get("/api/files/pages")
+    def get_pdf_page_count():
+        raw_path = request.args.get("path", "")
+        target = resolve_slide_file(raw_path)
+        if not target or not target.is_file():
+            return jsonify({"error": "File not found"}), 404
+        try:
+            with open(target, "rb") as f:
+                data = f.read()
+            matches = len(re.findall(rb'/Type\s*/Page\b[^s]', data))
+            if matches == 0:
+                count_match = re.search(rb'/Type\s*/Pages.*?/Count\s+(\d+)', data, re.DOTALL)
+                if count_match:
+                    matches = int(count_match.group(1))
+            return jsonify({"path": raw_path, "pages": max(1, matches)})
+        except Exception as e:
+            logger.warning("Could not count PDF pages for %s: %s", raw_path, e)
+            return jsonify({"path": raw_path, "pages": 1})
+
     @app.post("/api/files/open-native")
     def open_file_native():
         import subprocess, sys
