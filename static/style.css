@@ -172,8 +172,9 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
-  overflow-x: hidden;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
   color: var(--text-main);
   background: var(--bg-app);
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -213,11 +214,14 @@ body.no-glow .glow {
 .shell {
   display: grid;
   grid-template-columns: 295px minmax(0, 1fr);
-  gap: 22px;
+  gap: 18px;
   max-width: 1750px;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
+  box-sizing: border-box;
   margin: auto;
-  padding: 22px;
+  padding: 14px 20px;
+  overflow: hidden;
 }
 
 .glass {
@@ -236,8 +240,11 @@ body.no-glow .glow {
 .sidebar {
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 44px);
-  padding: 24px 18px;
+  height: 100%;
+  max-height: calc(100vh - 28px);
+  padding: 20px 18px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .brand {
@@ -780,15 +787,26 @@ body.no-glow .glow {
    ========================================================= */
 .main {
   min-width: 0;
-  padding: 12px 8px 8px;
+  height: 100%;
+  max-height: calc(100vh - 28px);
+  padding: 8px 8px 8px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .module-view {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+#view-study-space {
+  overflow: hidden;
 }
 
 .module-view.hidden,
@@ -804,14 +822,15 @@ body.no-glow .glow {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 14px;
   gap: 16px;
+  flex-shrink: 0;
 }
 
 .topbar h1 {
-  font-size: clamp(26px, 3vw, 36px);
-  letter-spacing: -1.2px;
-  margin: 8px 0 5px;
+  font-size: clamp(24px, 2.5vw, 32px);
+  letter-spacing: -1px;
+  margin: 4px 0 3px;
 }
 
 .topbar p {
@@ -839,10 +858,13 @@ body.no-glow .glow {
    PRIMARY WORKSPACE (PDF VIEWER & FLOATING POMODORO TIMER)
    ========================================================= */
 .workspace {
-  padding: 18px;
-  flex: 1;
+  padding: 14px 18px;
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .workspace-head {
@@ -928,14 +950,111 @@ body.no-glow .glow {
   background: #a78aff35;
 }
 
-.pdf-viewer, .viewer-placeholder {
+.pdf-viewer, .viewer-placeholder, .pdf-stage {
   width: 100%;
-  height: min(69vh, 850px);
-  min-height: 400px;
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
   border: 0;
   border-radius: 12px;
-  background: #eeecf5;
-  flex: 1;
+  background: #12101e;
+  overflow: hidden;
+}
+
+.pdf-stage {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  background: rgba(14, 12, 24, 0.7);
+  border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.1));
+}
+
+.pdf-scroll-viewport {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: auto;
+  outline: none;
+  padding: 16px 16px 24px 16px;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pdf-pages-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  min-width: min-content;
+}
+
+.pdf-page-wrapper {
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.12);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.2s ease;
+  user-select: text;
+  scroll-snap-align: center;
+  scroll-snap-stop: normal;
+}
+
+.pdf-page-wrapper.active-page {
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(167, 139, 250, 0.6);
+}
+
+.pdf-page-canvas {
+  display: block;
+}
+
+.pdf-page-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  background: #1e1b2e;
+}
+
+/* Zoom Controls Bar */
+.pdf-zoom-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.15));
+  border-radius: 9px;
+  padding: 3px 6px;
+  transition: border-color 0.2s;
+}
+
+.pdf-zoom-nav:hover {
+  border-color: rgba(167, 139, 250, 0.4);
+}
+
+.pdf-zoom-indicator {
+  font-size: 11px;
+  font-weight: 700;
+  color: #c4b5fd;
+  min-width: 44px;
+  text-align: center;
+  user-select: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.pdf-zoom-indicator:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .viewer-placeholder {
@@ -1160,18 +1279,32 @@ body.focus-mode-active {
   display: none !important;
 }
 
-/* PDF Viewer fills all available space */
-.workspace.study-fullscreen .pdf-viewer,
-.workspace:fullscreen .pdf-viewer {
-  display: block !important;
-  flex: 1 1 auto !important;
+/* PDF Stage / Viewer fills all available space without displaying hidden elements */
+.workspace.study-fullscreen .pdf-stage:not(.hidden),
+.workspace:fullscreen .pdf-stage:not(.hidden),
+.workspace.study-fullscreen .pdf-viewer:not(.hidden),
+.workspace:fullscreen .pdf-viewer:not(.hidden) {
+  display: flex !important;
+  flex: 1 1 0 !important;
   width: 100% !important;
-  height: calc(100vh - 120px) !important;
+  height: auto !important;
   min-height: 0 !important;
   border-radius: 10px !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  background: #181528 !important;
+  background: #12101e !important;
   margin: 0 !important;
+  overflow: hidden !important;
+}
+
+.workspace.study-fullscreen .hidden,
+.workspace:fullscreen .hidden {
+  display: none !important;
+}
+
+.workspace.study-fullscreen .pdf-scroll-viewport,
+.workspace:fullscreen .pdf-scroll-viewport {
+  height: 100% !important;
+  box-sizing: border-box !important;
 }
 
 /* Bottom bar in Focus Mode */

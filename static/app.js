@@ -42,6 +42,13 @@ const fileURL = path => '/files/' + path.replace(/^slides[\\/]/i, '').split(/[\\
 
 let currentPdfPage = 1;
 let totalPdfPages = 1;
+let activePdfDoc = null;
+let pdfZoomScale = 1.0;
+let basePageWidth = 720;
+let basePageHeight = 405;
+let renderedPages = new Set();
+let renderingPages = new Set();
+let renderDebounceTimer = null;
 
 function updatePdfPageUI() {
   const indicator = $('pdf-page-indicator');
@@ -58,23 +65,261 @@ function updatePdfPageUI() {
   if (nextBtn) nextBtn.disabled = (totalPdfPages > 1 && currentPdfPage >= totalPdfPages);
 }
 
-function goToPdfPage(pageNum, scrollDirection = null) {
-  if (!currentDoc) return;
-  const viewer = $('pdf-viewer');
-  if (!viewer || viewer.classList.contains('hidden')) return;
+function updatePdfZoomUI() {
+  const zoomInd = $('pdf-zoom-indicator');
+  if (zoomInd) {
+    zoomInd.textContent = `${Math.round(pdfZoomScale * 100)}%`;
+  }
+}
 
-  const maxPages = totalPdfPages > 1 ? totalPdfPages : 999;
-  pageNum = Math.max(1, Math.min(maxPages, pageNum));
-  if (pageNum === currentPdfPage && totalPdfPages > 1) return;
+function setPdfZoom(newScale) {
+  newScale = Math.max(0.4, Math.min(3.5, Math.round(newScale * 100) / 100));
+  if (Math.abs(newScale - pdfZoomScale) < 0.01) return;
 
-  const prevPage = currentPdfPage;
+  const viewportEl = $('pdf-scroll-viewport');
+  const prevScrollTop = viewportEl ? viewportEl.scrollTop : 0;
+  const prevScrollHeight = viewportEl ? viewportEl.scrollHeight : 1;
+  const scrollRatio = prevScrollTop / Math.max(1, prevScrollHeight);
+
+  pdfZoomScale = newScale;
+  updatePdfZoomUI();
+
+  // Resize all wrappers immediately for snappy visual response
+  const scaledWidth = Math.floor(basePageWidth * pdfZoomScale);
+  const scaledHeight = Math.floor(basePageHeight * pdfZoomScale);
+  const wrappers = document.querySelectorAll('.pdf-page-wrapper');
+  wrappers.forEach(wrap => {
+    wrap.style.width = `${scaledWidth}px`;
+    wrap.style.height = `${scaledHeight}px`;
+    const canvas = wrap.querySelector('canvas');
+    if (canvas) {
+      canvas.style.width = `${scaledWidth}px`;
+      canvas.style.height = `${scaledHeight}px`;
+    }
+  });
+
+  // Re-render visible pages at the new scale
+  renderedPages.clear();
+  scheduleVisiblePagesRender();
+
+  // Preserve relative scroll position
+  if (viewportEl) {
+    requestAnimationFrame(() => {
+      viewportEl.scrollTop = scrollRatio * viewportEl.scrollHeight;
+    });
+  }
+}
+
+function fitPdfToScreen() {
+  const viewportEl = $('pdf-scroll-viewport');
+  if (!viewportEl || !basePageWidth || !basePageHeight) return;
+  const availWidth = viewportEl.clientWidth - 40;
+  const availHeight = viewportEl.clientHeight - 40;
+  if (availWidth <= 0 || availHeight <= 0) return;
+  const scaleW = availWidth / basePageWidth;
+  const scaleH = availHeight / basePageHeight;
+  const optimal = Math.min(scaleW, scaleH);
+  setPdfZoom(Math.max(0.4, Math.min(3.5, optimal)));
+}
+
+function buildPagePlaceholders() {
+  const container = $('pdf-pages-container');
+  if (!container) return;
+  container.replaceChildren();
+  renderedPages.clear();
+  renderingPages.clear();
+
+  const scaledWidth = Math.floor(basePageWidth * pdfZoomScale);
+  const scaledHeight = Math.floor(basePageHeight * pdfZoomScale);
+
+  const fragment = document.createDocumentFragment();
+  for (let i = 1; i <= totalPdfPages; i++) {
+    const wrap = document.createElement('div');
+    wrap.className = 'pdf-page-wrapper pdf-page-placeholder' + (i === currentPdfPage ? ' active-page' : '');
+    wrap.id = `pdf-page-wrap-${i}`;
+    wrap.dataset.page = String(i);
+    wrap.style.width = `${scaledWidth}px`;
+    wrap.style.height = `${scaledHeight}px`;
+
+    const span = document.createElement('span');
+    span.textContent = `Slide ${i} / ${totalPdfPages}`;
+    wrap.appendChild(span);
+
+    fragment.appendChild(wrap);
+  }
+  container.appendChild(fragment);
+}
+
+function scheduleVisiblePagesRender() {
+  if (renderDebounceTimer) clearTimeout(renderDebounceTimer);
+  renderDebounceTimer = setTimeout(renderVisiblePages, 40);
+}
+
+async function renderVisiblePages() {
+  if (!activePdfDoc) return;
+  const viewportEl = $('pdf-scroll-viewport');
+  if (!viewportEl) return;
+
+  const vpRect = viewportEl.getBoundingClientRect();
+  const buffer = vpRect.height * 1.5;
+
+  const wrappers = viewportEl.querySelectorAll('.pdf-page-wrapper');
+  for (const wrap of wrappers) {
+    const pageNum = parseInt(wrap.dataset.page, 10);
+    const rect = wrap.getBoundingClientRect();
+    const isVisibleOrNear = (rect.bottom >= vpRect.top - buffer) && (rect.top <= vpRect.bottom + buffer);
+
+    if (isVisibleOrNear) {
+      if (!renderedPages.has(pageNum) && !renderingPages.has(pageNum)) {
+        renderSinglePage(pageNum);
+      }
+    } else {
+      // Memory cleanup for long documents (e.g. 200+ page combined unit PDFs)
+      if (renderedPages.has(pageNum) && Math.abs(pageNum - currentPdfPage) > 5) {
+        const canvas = wrap.querySelector('canvas');
+        if (canvas) {
+          canvas.remove();
+          renderedPages.delete(pageNum);
+          wrap.classList.add('pdf-page-placeholder');
+          if (!wrap.querySelector('span')) {
+            const span = document.createElement('span');
+            span.textContent = `Slide ${pageNum} / ${totalPdfPages}`;
+            wrap.appendChild(span);
+          }
+        }
+      }
+    }
+  }
+}
+
+async function renderSinglePage(pageNum) {
+  if (renderingPages.has(pageNum) || renderedPages.has(pageNum) || !activePdfDoc) return;
+  renderingPages.add(pageNum);
+  try {
+    const wrap = $(`pdf-page-wrap-${pageNum}`);
+    if (!wrap) return;
+
+    const page = await activePdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: pdfZoomScale });
+    const dpr = window.devicePixelRatio || 1;
+
+    let canvas = wrap.querySelector('canvas');
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      canvas.className = 'pdf-page-canvas';
+      const placeholderSpan = wrap.querySelector('span');
+      if (placeholderSpan) placeholderSpan.remove();
+      wrap.appendChild(canvas);
+    }
+
+    canvas.width = Math.floor(viewport.width * dpr);
+    canvas.height = Math.floor(viewport.height * dpr);
+    canvas.style.width = `${Math.floor(viewport.width)}px`;
+    canvas.style.height = `${Math.floor(viewport.height)}px`;
+    wrap.style.width = `${Math.floor(viewport.width)}px`;
+    wrap.style.height = `${Math.floor(viewport.height)}px`;
+
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const renderTask = page.render({
+      canvasContext: ctx,
+      viewport: viewport
+    });
+
+    await renderTask.promise;
+    renderedPages.add(pageNum);
+    wrap.classList.remove('pdf-page-placeholder');
+  } catch (err) {
+    console.warn(`Render error page ${pageNum}:`, err);
+  } finally {
+    renderingPages.delete(pageNum);
+  }
+}
+
+// Scroll Tracking: updates the top counter in real time as the user scrolls
+function onPdfViewportScroll() {
+  if (!activePdfDoc || totalPdfPages <= 1) return;
+  const viewportEl = $('pdf-scroll-viewport');
+  if (!viewportEl) return;
+
+  const vpRect = viewportEl.getBoundingClientRect();
+  const centerY = vpRect.top + (vpRect.height / 2);
+
+  const wrappers = viewportEl.querySelectorAll('.pdf-page-wrapper');
+  let closestPage = currentPdfPage;
+  let minDiff = Infinity;
+
+  for (const wrap of wrappers) {
+    const rect = wrap.getBoundingClientRect();
+    const wrapCenterY = rect.top + (rect.height / 2);
+    const diff = Math.abs(wrapCenterY - centerY);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestPage = parseInt(wrap.dataset.page, 10);
+    }
+  }
+
+  if (closestPage !== currentPdfPage && closestPage >= 1 && closestPage <= totalPdfPages) {
+    currentPdfPage = closestPage;
+    updatePdfPageUI();
+    wrappers.forEach(w => w.classList.toggle('active-page', parseInt(w.dataset.page, 10) === currentPdfPage));
+  }
+
+  scheduleVisiblePagesRender();
+}
+
+function goToPdfPage(pageNum) {
+  scrollToPdfPage(pageNum);
+}
+
+function scrollToPdfPage(pageNum) {
+  pageNum = Math.max(1, Math.min(totalPdfPages, pageNum));
   currentPdfPage = pageNum;
   updatePdfPageUI();
 
-  const baseUrl = fileURL(currentDoc);
-  const targetUrl = `${baseUrl}#page=${currentPdfPage}&toolbar=1&navpanes=0`;
+  if (activePdfDoc) {
+    const viewportEl = $('pdf-scroll-viewport');
+    const wrap = $(`pdf-page-wrap-${pageNum}`);
+    if (viewportEl && wrap) {
+      // Calculate wrap center relative to viewport center
+      const wrapRect = wrap.getBoundingClientRect();
+      const vpRect = viewportEl.getBoundingClientRect();
+      const currentScrollTop = viewportEl.scrollTop;
+      const wrapCenter = wrapRect.top + (wrapRect.height / 2);
+      const vpCenter = vpRect.top + (vpRect.height / 2);
+      const delta = wrapCenter - vpCenter;
 
-  // 1. Update hash on iframe location
+      viewportEl.scrollTo({
+        top: Math.max(0, currentScrollTop + delta),
+        behavior: 'smooth'
+      });
+      wrap.classList.add('active-page');
+      setTimeout(() => wrap.classList.remove('active-page'), 1500);
+    }
+    scheduleVisiblePagesRender();
+  } else {
+    // Fallback for iframe mode
+    goToPdfPageIframe(pageNum);
+  }
+}
+
+function nextPdfPage() {
+  if (currentPdfPage < totalPdfPages) {
+    scrollToPdfPage(currentPdfPage + 1);
+  }
+}
+
+function prevPdfPage() {
+  if (currentPdfPage > 1) {
+    scrollToPdfPage(currentPdfPage - 1);
+  }
+}
+
+function goToPdfPageIframe(pageNum) {
+  const viewer = $('pdf-viewer');
+  if (!viewer || !currentDoc) return;
+  const targetUrl = `${fileURL(currentDoc)}#page=${pageNum}&toolbar=1&navpanes=0`;
   try {
     if (viewer.contentWindow?.location) {
       viewer.contentWindow.location.replace(targetUrl);
@@ -84,52 +329,9 @@ function goToPdfPage(pageNum, scrollDirection = null) {
   } catch (_) {
     viewer.src = targetUrl;
   }
-
-  // 2. Direct scroll inside iframe (WebKit same-origin)
-  try {
-    const win = viewer.contentWindow;
-    if (win) {
-      const docHeight = win.document?.documentElement?.scrollHeight || win.document?.body?.scrollHeight;
-      if (docHeight && totalPdfPages > 1) {
-        const pageHeight = docHeight / totalPdfPages;
-        const targetScroll = (currentPdfPage - 1) * pageHeight;
-        win.scrollTo({ top: targetScroll, behavior: 'smooth' });
-      } else {
-        const isNext = scrollDirection === 'next' || currentPdfPage > prevPage;
-        const step = isNext ? (win.innerHeight * 0.9) : (-win.innerHeight * 0.9);
-        win.scrollBy({ top: step, behavior: 'smooth' });
-      }
-    }
-  } catch (_) {}
-
-  // 3. Dispatch keyboard event into iframe for native PDF plugin
-  try {
-    const isNext = scrollDirection === 'next' || currentPdfPage > prevPage;
-    const key = isNext ? 'PageDown' : 'PageUp';
-    const code = isNext ? 'PageDown' : 'PageUp';
-    const keyCode = isNext ? 34 : 33;
-    const evt = new KeyboardEvent('keydown', {
-      key: key,
-      code: code,
-      keyCode: keyCode,
-      which: keyCode,
-      bubbles: true,
-      cancelable: true
-    });
-    viewer.contentDocument?.dispatchEvent(evt);
-    viewer.contentWindow?.dispatchEvent(evt);
-  } catch (_) {}
 }
 
-function nextPdfPage() {
-  goToPdfPage(currentPdfPage + 1, 'next');
-}
-
-function prevPdfPage() {
-  goToPdfPage(currentPdfPage - 1, 'prev');
-}
-
-function openFile(file, title, breadcrumb, button) {
+async function openFile(file, title, breadcrumb, button) {
   if (!file.path || !String(file.name || file.path).toLowerCase().endsWith('.pdf')) return;
   selectedFile?.classList.remove('selected');
   selectedFile = button;
@@ -140,35 +342,73 @@ function openFile(file, title, breadcrumb, button) {
   totalPdfPages = 1;
   updatePdfPageUI();
 
-  // Query PDF pages in background
-  fetch(`/api/files/pages?path=${encodeURIComponent(file.path)}`)
-    .then(r => r.json())
-    .then(data => {
-      if (data && data.pages && currentDoc === file.path) {
-        totalPdfPages = Math.max(1, Number(data.pages) || 1);
-        updatePdfPageUI();
-      }
-    })
-    .catch(() => {});
-
-  const url = `${fileURL(file.path)}#page=1`;
-
-  const viewer = $('pdf-viewer');
-  viewer.src = url;
-  viewer.classList.remove('hidden');
   $('pdf-page-controls')?.classList.remove('hidden');
+  $('pdf-zoom-controls')?.classList.remove('hidden');
   $('study-fullscreen')?.classList.remove('hidden');
   $('bookmark-current')?.classList.remove('hidden');
   $('btn-open-native')?.classList.remove('hidden');
   $('btn-reveal-finder')?.classList.remove('hidden');
   $('btn-save-copy')?.classList.remove('hidden');
   $('viewer-placeholder')?.classList.add('hidden');
+
   $('document-title').textContent = title;
   $('document-path').textContent = breadcrumb;
-  $('file-count').textContent = 'PDF ready to study';
+  $('file-count').textContent = 'Loading lecture slides…';
 
   updateBookmarkButton();
   recordRecentFile(file.path, title, breadcrumb);
+
+  const url = fileURL(file.path);
+
+  // Try Native High-DPI Canvas PDF.js Viewer
+  if (window.pdfjsLib) {
+    try {
+      $('pdf-viewer')?.classList.add('hidden');
+      const stage = $('pdf-stage');
+      if (stage) stage.classList.remove('hidden');
+
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/vendor/pdfjs/pdf.worker.min.js';
+      const loadingTask = pdfjsLib.getDocument(url);
+      activePdfDoc = await loadingTask.promise;
+      totalPdfPages = activePdfDoc.numPages;
+
+      const firstPage = await activePdfDoc.getPage(1);
+      const initialVp = firstPage.getViewport({ scale: 1.0 });
+      basePageWidth = initialVp.width || 720;
+      basePageHeight = initialVp.height || 405;
+
+      const viewportEl = $('pdf-scroll-viewport');
+      const availWidth = (viewportEl?.clientWidth || 800) - 40;
+      const availHeight = (viewportEl?.clientHeight || 600) - 40;
+      const scaleW = availWidth / basePageWidth;
+      const scaleH = availHeight / basePageHeight;
+      pdfZoomScale = Math.max(0.4, Math.min(2.5, Math.min(scaleW, scaleH)));
+
+      buildPagePlaceholders();
+      updatePdfZoomUI();
+      updatePdfPageUI();
+      scheduleVisiblePagesRender();
+
+      if (viewportEl) {
+        viewportEl.scrollTop = 0;
+        viewportEl.focus();
+      }
+      button?.blur();
+
+      $('file-count').textContent = `${totalPdfPages} pages ready to study`;
+      return;
+    } catch (err) {
+      console.warn('PDF.js rendering fallback to iframe:', err);
+    }
+  }
+
+  // Fallback to iframe if PDF.js is unavailable
+  $('pdf-stage')?.classList.add('hidden');
+  const viewer = $('pdf-viewer');
+  if (viewer) {
+    viewer.src = `${url}#page=1`;
+    viewer.classList.remove('hidden');
+  }
 }
 
 function renderNavigation(query = '') {
@@ -310,10 +550,17 @@ function setStudyFocusMode(enabled) {
       }
     } catch (_) {}
   }
+
+  // Refit PDF smoothly when entering/exiting focus
+  if (activePdfDoc) {
+    setTimeout(fitPdfToScreen, 80);
+    setTimeout(fitPdfToScreen, 300);
+  }
 }
 
 studyFullscreenButton?.addEventListener('click', () => {
-  if (!$('pdf-viewer').classList.contains('hidden')) {
+  const isPdfOpen = !$('pdf-stage')?.classList.contains('hidden') || !$('pdf-viewer')?.classList.contains('hidden');
+  if (isPdfOpen && currentDoc) {
     setStudyFocusMode(!isFocusMode);
   }
 });
@@ -330,7 +577,7 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// PDF Keyboard Navigation (Right Arrow: Next Page / Left Arrow: Prev Page)
+// PDF Keyboard Navigation (Arrow Keys / Page Keys: only navigates PDF, never scrolls outer page)
 function handlePdfKeyNavigation(e) {
   // Never intercept when typing into an input, textarea, select, or contenteditable
   const activeEl = document.activeElement;
@@ -344,16 +591,20 @@ function handlePdfKeyNavigation(e) {
     return;
   }
 
+  const stage = $('pdf-stage');
   const viewer = $('pdf-viewer');
-  if (!viewer || viewer.classList.contains('hidden') || !currentDoc) {
+  const isPdfOpen = (!stage?.classList.contains('hidden')) || (!viewer?.classList.contains('hidden'));
+  if (!isPdfOpen || !currentDoc) {
     return;
   }
 
-  if (e.key === 'ArrowRight' || e.code === 'ArrowRight') {
+  if (e.key === 'ArrowRight' || e.code === 'ArrowRight' || e.key === 'ArrowDown' || e.code === 'ArrowDown' || e.key === 'PageDown') {
     e.preventDefault();
+    e.stopPropagation();
     nextPdfPage();
-  } else if (e.key === 'ArrowLeft' || e.code === 'ArrowLeft') {
+  } else if (e.key === 'ArrowLeft' || e.code === 'ArrowLeft' || e.key === 'ArrowUp' || e.code === 'ArrowUp' || e.key === 'PageUp') {
     e.preventDefault();
+    e.stopPropagation();
     prevPdfPage();
   }
 }
@@ -374,12 +625,16 @@ if (pdfViewerEl) {
 // Wire up PDF Page navigation buttons
 $('btn-pdf-prev')?.addEventListener('click', e => {
   e.preventDefault();
+  e.stopPropagation();
   prevPdfPage();
+  e.currentTarget?.blur();
 });
 
 $('btn-pdf-next')?.addEventListener('click', e => {
   e.preventDefault();
+  e.stopPropagation();
   nextPdfPage();
+  e.currentTarget?.blur();
 });
 
 $('pdf-page-indicator')?.addEventListener('click', () => {
@@ -390,6 +645,70 @@ $('pdf-page-indicator')?.addEventListener('click', () => {
     if (!isNaN(num) && num >= 1) {
       goToPdfPage(num);
     }
+  }
+});
+
+// Viewport Scroll & Trackpad Pinch-to-Zoom
+const pdfScrollViewport = $('pdf-scroll-viewport');
+if (pdfScrollViewport) {
+  // Click to focus viewport so arrow keys work immediately
+  pdfScrollViewport.addEventListener('click', () => {
+    pdfScrollViewport.focus();
+  });
+
+  // Real-time page indicator tracking on scroll
+  pdfScrollViewport.addEventListener('scroll', onPdfViewportScroll, { passive: true });
+
+  // Trackpad pinch-to-zoom (macOS Chrome, Safari, and WebKit send wheel with ctrlKey on trackpad pinch)
+  pdfScrollViewport.addEventListener('wheel', e => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const zoomFactor = Math.exp(-e.deltaY * 0.012);
+      setPdfZoom(pdfZoomScale * zoomFactor);
+    }
+  }, { passive: false });
+
+  // Safari / WebKit native trackpad gesture events
+  let gestureBaseScale = 1.0;
+  pdfScrollViewport.addEventListener('gesturestart', e => {
+    e.preventDefault();
+    gestureBaseScale = pdfZoomScale;
+  });
+  pdfScrollViewport.addEventListener('gesturechange', e => {
+    e.preventDefault();
+    if (gestureBaseScale && e.scale) {
+      setPdfZoom(gestureBaseScale * e.scale);
+    }
+  });
+  pdfScrollViewport.addEventListener('gestureend', e => {
+    e.preventDefault();
+  });
+}
+
+// PDF Zoom Toolbar Buttons
+$('btn-pdf-zoom-in')?.addEventListener('click', e => {
+  e.preventDefault();
+  setPdfZoom(pdfZoomScale * 1.2);
+});
+
+$('btn-pdf-zoom-out')?.addEventListener('click', e => {
+  e.preventDefault();
+  setPdfZoom(pdfZoomScale / 1.2);
+});
+
+$('btn-pdf-zoom-fit')?.addEventListener('click', e => {
+  e.preventDefault();
+  fitPdfToScreen();
+});
+
+$('pdf-zoom-indicator')?.addEventListener('click', e => {
+  e.preventDefault();
+  setPdfZoom(1.0);
+});
+
+window.addEventListener('resize', () => {
+  if (activePdfDoc) {
+    scheduleVisiblePagesRender();
   }
 });
 

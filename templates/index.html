@@ -132,6 +132,12 @@
                 <span id="pdf-page-indicator" class="pdf-page-indicator" title="Click to jump to a specific page">Page 1</span>
                 <button id="btn-pdf-next" class="action" type="button" aria-label="Next page (Right Arrow)" title="Next page (Right Arrow)">▸</button>
               </div>
+              <div id="pdf-zoom-controls" class="pdf-zoom-nav hidden" title="Pinch trackpad to zoom in / out">
+                <button id="btn-pdf-zoom-out" class="action" type="button" title="Zoom out (−)">−</button>
+                <span id="pdf-zoom-indicator" class="pdf-zoom-indicator" title="Reset zoom to 100%">100%</span>
+                <button id="btn-pdf-zoom-in" class="action" type="button" title="Zoom in (+)">+</button>
+                <button id="btn-pdf-zoom-fit" class="action" type="button" title="Fit to screen width">⤢ Fit</button>
+              </div>
               <button id="study-fullscreen" class="action hidden" type="button" aria-label="Enter fullscreen study mode" title="Fullscreen distraction-free study mode">⛶ Focus View</button>
               <button id="bookmark-current" class="action hidden" type="button" title="Bookmark this lecture">☆ Bookmark</button>
               <button id="btn-open-native" class="action hidden" type="button" title="Open PDF in Mac Preview or default viewer">↗ Preview</button>
@@ -144,6 +150,13 @@
             <div class="placeholder-icon">▤</div>
             <h3>Your study session starts here</h3>
             <p>Select a PDF from the library to preview it.</p>
+          </div>
+
+          <!-- Native Canvas PDF Stage with Trackpad Pinch-to-Zoom & Scroll Tracking -->
+          <div id="pdf-stage" class="pdf-stage hidden">
+            <div id="pdf-scroll-viewport" class="pdf-scroll-viewport" tabindex="0">
+              <div id="pdf-pages-container" class="pdf-pages-container"></div>
+            </div>
           </div>
 
           <iframe id="pdf-viewer" title="Lecture PDF viewer" class="pdf-viewer hidden"></iframe>
@@ -612,6 +625,7 @@
     </div>
   </div>
 
+  <script src="/static/vendor/pdfjs/pdf.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
