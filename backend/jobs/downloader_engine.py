@@ -467,6 +467,37 @@ class DownloaderEngine:
 
                         time.sleep(0.1)
 
+                    # Automatically merge/update unit combined PDF whenever slides exist or new ones are downloaded
+                    try:
+                        from backend.jobs.pdf_merger import merge_unit_folder
+                        merged_pdf = merge_unit_folder(folder)
+                        if merged_pdf and merged_pdf.is_file():
+                            try:
+                                rel_p = merged_pdf.relative_to(self.slides_dir)
+                            except ValueError:
+                                rel_p = merged_pdf
+                            rel_str = str(rel_p).replace("\\", "/")
+                            unit_classes = metadata[sem_name][subj_name]["units"][unit["title"]]
+                            existing_0 = next((c for c in unit_classes if c.get("class_no") == 0), None)
+                            if existing_0:
+                                existing_0["files"] = [{
+                                    "name": merged_pdf.name,
+                                    "path": rel_str,
+                                    "type": "pdf"
+                                }]
+                            else:
+                                unit_classes.insert(0, {
+                                    "class_no": 0,
+                                    "title": f"📚 All Lectures Combined ({unit['title']})",
+                                    "files": [{
+                                        "name": merged_pdf.name,
+                                        "path": rel_str,
+                                        "type": "pdf"
+                                    }]
+                                })
+                    except Exception as e:
+                        logger.warning("Auto-merge on sync error for %s: %s", unit.get("title"), e)
+
                 self.save_metadata(metadata)
                 completed_subjects += 1
                 if progress_callback:

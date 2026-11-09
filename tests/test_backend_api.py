@@ -265,6 +265,11 @@ def test_file_serving_and_actions(test_client):
     assert "pages" in res_pages.get_json()
     assert res_pages.get_json()["pages"] >= 1
 
+    # Merge units endpoint
+    res_merge = client.post("/api/slides/merge-units")
+    assert res_merge.status_code == 200
+    assert "units_processed" in res_merge.get_json()
+
 
 def test_profile_update_and_resolution(test_client):
     client, cfg = test_client

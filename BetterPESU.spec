@@ -37,6 +37,8 @@ hiddenimports = [
     'backend.jobs.sync_manager',
     'backend.jobs.downloader_engine',
     'backend.jobs.converter_engine',
+    'backend.jobs.pdf_merger',
+    'pypdf',
     'desktop.launcher',
 ]
 

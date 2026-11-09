@@ -285,6 +285,17 @@ def create_app(config: Optional[Config] = None) -> Flask:
             logger.warning("Could not count PDF pages for %s: %s", raw_path, e)
             return jsonify({"path": raw_path, "pages": 1})
 
+    @app.post("/api/slides/merge-units")
+    def merge_units():
+        from backend.jobs.pdf_merger import merge_all_units, update_courses_json_with_combined
+        res = merge_all_units(config.slides_dir)
+        update_courses_json_with_combined(config.courses_json, config.slides_dir)
+        return jsonify({
+            "message": f"Successfully processed {res['units_processed']} units and generated/updated {res['units_merged']} combined PDFs.",
+            "units_processed": res["units_processed"],
+            "units_merged": res["units_merged"]
+        })
+
     @app.post("/api/files/open-native")
     def open_file_native():
         import subprocess, sys

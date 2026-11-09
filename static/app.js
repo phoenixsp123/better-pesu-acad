@@ -238,8 +238,11 @@ function renderNavigation(query = '') {
 
             matched++;
             unitHasMatch = true;
-            const button = createButton('nav-file', file.name || lecture.title || 'Lecture PDF', () => {
-              openFile(file, file.name || lecture.title, `${semesterName} / ${subject.title || subjectName} / ${unitName}`, button);
+            const isCombined = lecture.class_no === 0 || (file.name || '').includes('[Combined]');
+            const btnClass = isCombined ? 'nav-file nav-file-combined' : 'nav-file';
+            const displayTitle = isCombined ? `📚 All Lectures Combined (${unitName})` : (file.name || lecture.title || 'Lecture PDF');
+            const button = createButton(btnClass, displayTitle, () => {
+              openFile(file, displayTitle, `${semesterName} / ${subject.title || subjectName} / ${unitName}`, button);
             });
             unitBody.append(button);
           }
@@ -1817,6 +1820,25 @@ $('btn-open-folder')?.addEventListener('click', () => {
     window.pywebview.api.open_slides_folder();
   } else {
     alert('Data folder: ' + $('settings-data-path').textContent);
+  }
+});
+
+$('btn-merge-all-units')?.addEventListener('click', async () => {
+  const btn = $('btn-merge-all-units');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Combining…';
+  try {
+    const res = await fetch('/api/slides/merge-units', { method: 'POST' });
+    const data = await res.json();
+    alert(data.message || 'Successfully combined unit PDFs!');
+    await loadCourses();
+  } catch (err) {
+    console.error('Failed to merge unit PDFs:', err);
+    alert('Error combining unit PDFs: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
   }
 });
 

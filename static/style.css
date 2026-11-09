@@ -557,6 +557,28 @@ body.no-glow .glow {
   border-left: 2px solid #b69bff;
 }
 
+.nav-file.nav-file-combined {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.22), rgba(99, 102, 241, 0.16)) !important;
+  border: 1px solid rgba(167, 139, 250, 0.35) !important;
+  color: #f8fafc !important;
+  font-weight: 700 !important;
+  padding: 8px 12px 8px 30px !important;
+  border-radius: 8px !important;
+  margin: 4px 6px 6px 12px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.nav-file.nav-file-combined:before {
+  content: "" !important;
+}
+
+.nav-file.nav-file-combined:hover, .nav-file.nav-file-combined.selected {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(99, 102, 241, 0.3)) !important;
+  border-color: rgba(167, 139, 250, 0.6) !important;
+  color: #ffffff !important;
+  transform: translateX(2px);
+}
+
 .nav-group {
   margin-bottom: 5px;
 }
