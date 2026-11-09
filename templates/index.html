@@ -196,14 +196,6 @@
         <!-- Attendance Overview Summary Banner -->
         <div class="att-summary-banner glass">
           <div class="att-summary-col">
-            <span class="att-summary-label">SEMESTER ATTENDANCE</span>
-            <div class="att-summary-val-row">
-              <strong id="att-overall-percentage">0.0%</strong>
-              <span id="att-overall-badge" class="att-status-pill ok">ELIGIBLE</span>
-            </div>
-          </div>
-          <div class="att-summary-divider"></div>
-          <div class="att-summary-col">
             <span class="att-summary-label">ENROLLED COURSES</span>
             <strong id="att-total-subjects" class="att-summary-num">0</strong>
           </div>
@@ -211,11 +203,6 @@
           <div class="att-summary-col">
             <span class="att-summary-label">SAFE (≥ 75%)</span>
             <strong id="att-safe-count" class="att-summary-num safe-text">0</strong>
-          </div>
-          <div class="att-summary-divider"></div>
-          <div class="att-summary-col">
-            <span class="att-summary-label">ATTENDANCE SHORTAGE</span>
-            <strong id="att-danger-count" class="att-summary-num danger-text">0</strong>
           </div>
         </div>
 
@@ -321,34 +308,19 @@
           </div>
           <div class="gpa-grand-stats">
             <div>Total Enrolled Credits: <strong id="gpa-total-credits">0</strong></div>
-            <div id="gpa-insight-text" class="subtle">Adjust expected ESA marks or target grades below to simulate your semester GPA.</div>
+            <div id="gpa-insight-text" class="subtle">Slide ISA and ESA marks to dynamically simulate your subject grades and semester GPA.</div>
           </div>
         </div>
 
         <div class="grades-grid-full">
           <!-- SUBJECT PREDICTOR CARDS -->
-          <div class="personal-panel glass">
-            <div class="panel-header-row">
-              <h2>Course Assessments & Target Predictor</h2>
-              <span class="subtle" style="font-size:12px;">Total (100) = CIE (50) + ESA (50% wt · /100 Reg, /50 CIE)</span>
+          <div class="gpa-predictor-container">
+            <div class="gpa-predictor-subhead">
+              <span class="subtle" style="font-size: 12px;">Total (100) = CIE (50) + ESA (50% wt · /100 Reg, /50 CIE) · Grades update live as you drag sliders</span>
             </div>
-
-            <!-- TABLE HEADER -->
-            <div class="gpa-table-header">
-              <span style="flex: 2; min-width: 150px;">Course / Subject</span>
-              <span style="width: 45px; text-align: center;">Cr</span>
-              <span style="width: 80px; text-align: center;">ISA 1</span>
-              <span style="width: 80px; text-align: center;">ISA 2</span>
-              <span style="width: 80px; text-align: center;">Asg / Lab</span>
-              <span style="width: 70px; text-align: center;">CIE (/50)</span>
-              <span style="width: 65px; text-align: center;">Target</span>
-              <span style="width: 125px; text-align: center;">ESA Needed</span>
-              <span style="width: 100px; text-align: center;">Expected ESA</span>
-              <span style="width: 65px; text-align: center;">Grade</span>
-              <span style="width: 30px;"></span>
+            <div id="gpa-subjects-container" class="gpa-cards-grid">
+              <div class="empty">Loading course predictors…</div>
             </div>
-
-            <div id="gpa-subjects-container" class="gpa-subjects-list"></div>
           </div>
         </div>
       </div>

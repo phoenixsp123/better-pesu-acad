@@ -236,7 +236,90 @@ class Database:
     def get_profile(self) -> Optional[Dict[str, Any]]:
         with self.get_connection() as conn:
             row = conn.execute("SELECT * FROM student_profile WHERE id = 1").fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            data = dict(row)
+
+            changed = False
+            # Clean SRN if prefixed with "SRN :" or "Roll :"
+            srn_raw = data.get("srn") or ""
+            srn_clean = re.sub(r'^(?:SRN\s*:\s*|Roll\s*:\s*)', '', srn_raw, flags=re.IGNORECASE).strip()
+            if srn_clean != srn_raw:
+                data["srn"] = srn_clean
+                changed = True
+
+            # If semester is empty or "–", infer latest from isa_marks / attendance
+            if not data.get("semester") or data.get("semester") in ("–", "-", ""):
+                try:
+                    sem_row = conn.execute("""
+                        SELECT semester FROM isa_marks WHERE semester IS NOT NULL AND semester != ''
+                        UNION
+                        SELECT semester FROM attendance WHERE semester IS NOT NULL AND semester != ''
+                        ORDER BY semester DESC LIMIT 1
+                    """).fetchone()
+                    if sem_row and sem_row[0]:
+                        data["semester"] = sem_row[0]
+                        changed = True
+                    else:
+                        data["semester"] = "Sem-3"
+                        changed = True
+                except Exception:
+                    data["semester"] = "Sem-3"
+
+            # If branch is empty or generic "Engineering", infer from SRN code
+            if not data.get("branch") or data.get("branch") in ("Engineering", "–", "-"):
+                branch_map = {
+                    "CS": "Computer Science and Engineering",
+                    "EC": "Electronics and Communication Engineering",
+                    "EE": "Electrical and Electronics Engineering",
+                    "ME": "Mechanical Engineering",
+                    "BT": "Biotechnology",
+                    "AI": "Artificial Intelligence & Machine Learning",
+                    "AM": "Artificial Intelligence & Machine Learning",
+                    "IS": "Information Science and Engineering",
+                    "DS": "Data Science",
+                    "CV": "Civil Engineering",
+                    "CH": "Chemical Engineering",
+                }
+                match = re.search(r'PES\d(?:UG|PG)\d\d([A-Z]{2})', data.get("srn", ""), re.IGNORECASE)
+                if match and match.group(1).upper() in branch_map:
+                    data["branch"] = branch_map[match.group(1).upper()]
+                    changed = True
+                else:
+                    data["branch"] = "Computer Science and Engineering"
+                    changed = True
+
+            # Campus refinement
+            if not data.get("campus") or data.get("campus") in ("PES University", "–", "-"):
+                if "PES2" in (data.get("srn") or "").upper():
+                    data["campus"] = "PES University (Electronic City)"
+                else:
+                    data["campus"] = "PES University (Ring Road)"
+                changed = True
+
+            # Persist back inferred fields if changed
+            if changed:
+                try:
+                    conn.execute("""
+                        UPDATE student_profile SET
+                            srn = ?,
+                            semester = ?,
+                            branch = ?,
+                            campus = ?,
+                            updated_at = ?
+                        WHERE id = 1
+                    """, (
+                        data.get("srn"),
+                        data.get("semester"),
+                        data.get("branch"),
+                        data.get("campus"),
+                        datetime.now(timezone.utc).isoformat()
+                    ))
+                    conn.commit()
+                except Exception as e:
+                    logger.debug("Could not persist auto-resolved profile fields: %s", e)
+
+            return data
 
     def save_profile(self, profile_data: Dict[str, Any]) -> None:
         now = datetime.now(timezone.utc).isoformat()

@@ -1690,152 +1690,241 @@ body.focus-mode-active {
   gap: 20px;
 }
 
-.panel-header-row {
+.gpa-predictor-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.gpa-predictor-subhead {
+  padding: 4px 2px;
+}
+
+/* GPA Cards Grid matching Attendance layout */
+.gpa-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 18px;
+}
+
+.gpa-card {
+  background: var(--card-bg, rgba(17, 24, 39, 0.75));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-lg, 14px);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gpa-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(167, 139, 250, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.gpa-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.gpa-card-title-input {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main, #f8fafc);
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed transparent;
+  padding: 2px 0;
+  width: 100%;
+  transition: border-color 0.2s;
+}
+
+.gpa-card-title-input:hover,
+.gpa-card-title-input:focus {
+  border-bottom-color: rgba(167, 139, 250, 0.5);
+  outline: none;
+}
+
+.gpa-cr-select {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #c4b5fd;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.gpa-card-grade-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border-radius: 8px;
+  min-width: 52px;
+  line-height: 1.1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: all 0.25s ease;
+}
+
+.gpa-grade-letter {
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: -0.5px;
+}
+
+.gpa-grade-points {
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.2px;
+}
+
+/* GPA Controls Body */
+.gpa-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gpa-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.gpa-control-group.esa-group {
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.gpa-control-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
 }
 
-.panel-header-row h2 {
-  margin: 0;
-}
-
-.gpa-table-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 8px;
-  font-size: 11px;
+.gpa-control-label {
+  font-size: 11.5px;
   font-weight: 700;
-  color: #a78bfa;
-  margin-bottom: 8px;
+  color: #e2e8f0;
 }
 
-.gpa-subjects-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.gpa-subject-row {
+.gpa-control-input-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 10px;
-  transition: all 0.2s;
+  gap: 5px;
 }
 
-.gpa-subject-row:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(167, 139, 250, 0.3);
-}
-
-.gpa-sub-title-col {
-  flex: 2;
-  min-width: 140px;
-}
-
-.gpa-sub-name-input {
-  width: 100%;
-  font-size: 13px;
-  font-weight: 600;
+.gpa-inline-input {
+  width: 54px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
   color: #fff;
-  background: transparent;
-  border: none;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.2);
-  padding: 4px 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 3px 6px;
+  text-align: center;
 }
 
-.gpa-sub-name-input:focus {
+.gpa-inline-input:focus {
   outline: none;
-  border-bottom-color: #a78bfa;
+  border-color: #a78bfa;
 }
 
-.gpa-sub-code-text {
-  font-size: 10px;
-  color: #8b80a6;
-  margin-top: 2px;
-}
-
-.gpa-num-input {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #fff;
-  border-radius: 6px;
-  padding: 5px 6px;
-  font-size: 12px;
-  text-align: center;
-}
-
-.gpa-cell-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  position: relative;
-}
-
-.gpa-cell-wrap .gpa-num-input {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.gpa-cell-sub {
-  font-size: 10px;
+.gpa-inline-denom {
+  font-size: 11px;
   font-weight: 600;
-  color: #8b80a6;
-  line-height: 1;
-  letter-spacing: 0.3px;
+  color: #94a3b8;
 }
 
-.gpa-cie-pill {
-  background: rgba(139, 92, 246, 0.2);
-  border: 1px solid rgba(139, 92, 246, 0.35);
-  padding: 5px 8px;
-  border-radius: 6px;
-  font-size: 12px;
+.gpa-weight-tag {
+  font-size: 10px;
   font-weight: 700;
-  text-align: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+.gpa-weight-tag.esa-tag {
+  background: rgba(167, 139, 250, 0.25);
   color: #c4b5fd;
 }
 
-.gpa-esa-needed-pill {
-  padding: 5px 8px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  text-align: center;
+/* Custom Range Slider */
+.gpa-range-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+  outline: none;
+  margin: 4px 0 2px 0;
+  transition: background 0.2s;
+  cursor: pointer;
 }
 
-.gpa-esa-needed-pill.possible {
-  background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+.gpa-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #a78bfa;
+  box-shadow: 0 0 8px rgba(167, 139, 250, 0.6);
+  cursor: pointer;
+  border: 2px solid #ffffff;
+  transition: transform 0.1s ease, background 0.2s ease;
 }
 
-.gpa-esa-needed-pill.impossible {
-  background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+.gpa-range-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  background: #c4b5fd;
 }
 
-.gpa-grade-badge {
+.gpa-range-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #a78bfa;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 8px rgba(167, 139, 250, 0.6);
+  cursor: pointer;
+}
+
+.gpa-control-group.esa-group .gpa-range-slider::-webkit-slider-thumb {
+  background: #818cf8;
+  box-shadow: 0 0 8px rgba(129, 140, 248, 0.7);
+}
+
+.gpa-card-footer {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 28px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 800;
-  color: #fff;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: #94a3b8;
+  background: rgba(0, 0, 0, 0.22);
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.gpa-card-footer strong {
+  color: #f1f5f9;
 }
 
 .grade-s { background: linear-gradient(135deg, #10b981, #059669); }

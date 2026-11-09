@@ -259,3 +259,29 @@ def test_file_serving_and_actions(test_client):
     res_non = client.post("/api/files/open-native", json={"path": "Sem-3/OS/nonexistent.pdf"})
     assert res_non.status_code == 404
 
+
+def test_profile_update_and_resolution(test_client):
+    client, cfg = test_client
+    # Save a profile with "SRN : " prefix and missing semester/branch
+    client.post("/api/auth/profile", json={
+        "name": "pes1ug25cs468",
+        "srn": "SRN : PES1UG25CS468",
+        "prn": ""
+    })
+
+    # Retrieve profile - should auto-clean SRN, infer branch, infer campus, infer semester
+    get_res = client.get("/api/auth/profile")
+    assert get_res.status_code == 200
+    p = get_res.get_json()
+    assert p["srn"] == "PES1UG25CS468"
+    assert p["branch"] == "Computer Science and Engineering"
+    assert p["campus"] == "PES University (Ring Road)"
+    assert p["semester"] == "Sem-3"
+
+    # User updates their PRN
+    update_res = client.post("/api/auth/profile", json={"prn": "PES1202300468"})
+    assert update_res.status_code == 200
+    p2 = update_res.get_json()["profile"]
+    assert p2["prn"] == "PES1202300468"
+
+

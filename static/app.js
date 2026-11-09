@@ -1018,9 +1018,9 @@ function renderGpaCourseRows() {
   }
 
   gpaCourseList.forEach((course, index) => {
-    const row = document.createElement('div');
-    row.className = 'gpa-subject-row';
-    row.dataset.index = index;
+    const card = document.createElement('div');
+    card.className = 'gpa-card attendance-card';
+    card.dataset.index = index;
 
     const isCie = isCieSubject(course.subject_name, course.subject_code, course.isa1_max);
     const isa1Max = Number(course.isa1_max) > 0 ? Number(course.isa1_max) : (isCie ? 45.0 : 40.0);
@@ -1028,171 +1028,251 @@ function renderGpaCourseRows() {
     const asgMax = Number(course.assignment_max) > 0 ? Number(course.assignment_max) : 10.0;
     const esaMax = isCie ? 50.0 : 100.0;
 
-    row.dataset.isCie = isCie ? '1' : '0';
-    row.dataset.isa1Max = isa1Max;
-    row.dataset.isa2Max = isa2Max;
-    row.dataset.asgMax = asgMax;
-    row.dataset.esaMax = esaMax;
+    card.dataset.isCie = isCie ? '1' : '0';
+    card.dataset.isa1Max = isa1Max;
+    card.dataset.isa2Max = isa2Max;
+    card.dataset.asgMax = asgMax;
+    card.dataset.esaMax = esaMax;
 
-    const isa1Display = (course.isa1_score !== null && course.isa1_score !== undefined) ? course.isa1_score : '';
-    const isa2Display = (course.isa2_score !== null && course.isa2_score !== undefined) ? course.isa2_score : '';
-    const asgDisplay = (course.assignment_score !== null && course.assignment_score !== undefined) ? course.assignment_score : '';
+    // ISA 1 default
+    const rawIsa1 = (course.isa1_score !== null && course.isa1_score !== undefined && String(course.isa1_score).trim() !== '') ? Number(course.isa1_score) : 30;
+    const isa1Val = Math.min(isa1Max, Math.max(0, rawIsa1));
 
-    const cie = calcRowCie(isa1Display, isa1Max, isa2Display, isa2Max, asgDisplay, asgMax);
+    // ISA 2 default (if conducted use score, else default to ISA 1 score or 30)
+    const rawIsa2 = (course.isa2_score !== null && course.isa2_score !== undefined && String(course.isa2_score).trim() !== '') ? Number(course.isa2_score) : (course.isa1_score ? Number(course.isa1_score) : 30);
+    const isa2Val = Math.min(isa2Max, Math.max(0, rawIsa2));
 
-    const target = course.target_grade || 'S';
-    const cutoffs = { S: 90, A: 80, B: 70, C: 60, D: 50, E: 40 };
-    const cutoff = cutoffs[target] || 90;
+    // Assignment default (out of 10, default 9.0)
+    const rawAsg = (course.assignment_score !== null && course.assignment_score !== undefined && String(course.assignment_score).trim() !== '') ? Number(course.assignment_score) : 9.0;
+    const asgVal = Math.min(asgMax, Math.max(0, rawAsg));
 
-    // ESA is evaluated out of 100 for regular courses (50% weightage), and out of 50 for CIE courses
-    const ptsNeeded50 = Math.max(0, cutoff - cie);
-    const neededEsa = isCie ? ptsNeeded50 : (ptsNeeded50 * 2.0);
-    const isImpossible = neededEsa > esaMax;
+    // ESA Exam default (80 out of 100 for regular, 40 out of 50 for CIE)
+    const rawEsa = (course.expected_esa !== null && course.expected_esa !== undefined && String(course.expected_esa).trim() !== '') ? Number(course.expected_esa) : (isCie ? 40 : 80);
+    const esaVal = Math.min(esaMax, Math.max(0, rawEsa));
 
-    let neededText = `${neededEsa.toFixed(1)} / ${esaMax}`;
-    if (isImpossible) neededText = `>${esaMax} (Unattainable)`;
-    else if (neededEsa === 0) neededText = `0.0 (Secured)`;
+    const credits = Number(course.credits) || 4;
 
-    row.innerHTML = `
-      <div class="gpa-sub-title-col">
-        <input class="gpa-sub-name-input row-name" value="${escapeHtml(course.subject_name || 'Subject')}" placeholder="Course Title">
-        <div class="gpa-sub-code-text row-code">${escapeHtml(course.subject_code || '')}</div>
-      </div>
-      <input type="number" class="gpa-num-input row-cr" value="${course.credits || 4}" min="1" max="10" style="width: 45px;">
-      
-      <div class="gpa-cell-wrap" style="width: 80px;">
-        <input type="number" step="0.5" class="gpa-num-input row-isa1" value="${isa1Display}" min="0" max="${isa1Max}" placeholder="—">
-        <span class="gpa-cell-sub">/ ${isa1Max}</span>
-      </div>
-
-      <div class="gpa-cell-wrap" style="width: 80px;">
-        <input type="number" step="0.5" class="gpa-num-input row-isa2" value="${isa2Display}" min="0" max="${isa2Max}" placeholder="—">
-        <span class="gpa-cell-sub">/ ${isa2Max}</span>
-      </div>
-
-      <div class="gpa-cell-wrap" style="width: 80px;">
-        <input type="number" step="0.5" class="gpa-num-input row-asg" value="${asgDisplay}" min="0" max="${asgMax}" placeholder="—">
-        <span class="gpa-cell-sub">/ ${asgMax}</span>
-      </div>
-
-      <div class="gpa-cie-pill row-cie" style="width: 70px;">${cie}</div>
-
-      <select class="sync-semester row-target" style="margin: 0; padding: 5px 6px; width: 65px; font-size: 12px;">
-        <option value="S" ${target === 'S' ? 'selected' : ''}>S</option>
-        <option value="A" ${target === 'A' ? 'selected' : ''}>A</option>
-        <option value="B" ${target === 'B' ? 'selected' : ''}>B</option>
-        <option value="C" ${target === 'C' ? 'selected' : ''}>C</option>
-        <option value="D" ${target === 'D' ? 'selected' : ''}>D</option>
-        <option value="E" ${target === 'E' ? 'selected' : ''}>E</option>
-      </select>
-
-      <div class="gpa-esa-needed-pill row-needed ${isImpossible ? 'impossible' : 'possible'}" style="width: 125px;">${neededText}</div>
-
-      <div class="gpa-cell-wrap" style="width: 100px;">
-        <input type="number" step="0.5" class="gpa-num-input row-exp-esa" placeholder="Auto" min="0" max="${esaMax}" value="${course.expected_esa !== undefined && course.expected_esa !== null ? course.expected_esa : ''}">
-        <span class="gpa-cell-sub">/ ${esaMax}</span>
+    card.innerHTML = `
+      <div class="gpa-card-head">
+        <div style="flex: 1; min-width: 0;">
+          <input class="gpa-card-title-input row-name" value="${escapeHtml(course.subject_name || 'Subject')}" placeholder="Course Title">
+          <div class="att-code row-code">${escapeHtml(course.subject_code || '')}</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <select class="row-cr gpa-cr-select" title="Course Credits">
+            <option value="1" ${credits === 1 ? 'selected' : ''}>1 Cr</option>
+            <option value="2" ${credits === 2 ? 'selected' : ''}>2 Cr</option>
+            <option value="3" ${credits === 3 ? 'selected' : ''}>3 Cr</option>
+            <option value="4" ${credits === 4 ? 'selected' : ''}>4 Cr</option>
+            <option value="5" ${credits === 5 ? 'selected' : ''}>5 Cr</option>
+            <option value="6" ${credits === 6 ? 'selected' : ''}>6 Cr</option>
+          </select>
+          <div class="gpa-card-grade-badge row-badge grade-s">
+            <span class="gpa-grade-letter">S</span>
+            <span class="gpa-grade-points">10.0 GP</span>
+          </div>
+          <button class="action row-del-btn" title="Remove course" style="padding: 4px 8px; font-size: 11px;">✕</button>
+        </div>
       </div>
 
-      <div class="gpa-grade-badge row-badge" style="width: 65px;">-</div>
-      <button class="action row-del-btn" style="padding: 4px 8px; width: 30px; font-size: 11px;" title="Remove row">✕</button>
+      <div class="gpa-card-body">
+        <!-- ISA 1 Group -->
+        <div class="gpa-control-group">
+          <div class="gpa-control-header">
+            <span class="gpa-control-label">ISA 1</span>
+            <div class="gpa-control-input-wrap">
+              <input type="number" step="0.5" class="gpa-inline-input row-isa1" value="${isa1Val}" min="0" max="${isa1Max}">
+              <span class="gpa-inline-denom">/ ${isa1Max}</span>
+              <span class="gpa-weight-tag row-isa1-contrib">0.0 / 22.5</span>
+            </div>
+          </div>
+          <input type="range" class="gpa-range-slider row-isa1-slider" min="0" max="${isa1Max}" step="0.5" value="${isa1Val}">
+        </div>
+
+        <!-- ISA 2 Group -->
+        <div class="gpa-control-group">
+          <div class="gpa-control-header">
+            <span class="gpa-control-label">ISA 2</span>
+            <div class="gpa-control-input-wrap">
+              <input type="number" step="0.5" class="gpa-inline-input row-isa2" value="${isa2Val}" min="0" max="${isa2Max}">
+              <span class="gpa-inline-denom">/ ${isa2Max}</span>
+              <span class="gpa-weight-tag row-isa2-contrib">0.0 / 22.5</span>
+            </div>
+          </div>
+          <input type="range" class="gpa-range-slider row-isa2-slider" min="0" max="${isa2Max}" step="0.5" value="${isa2Val}">
+        </div>
+
+        <!-- Assignment / Lab Group (numeric input as requested) -->
+        <div class="gpa-control-group">
+          <div class="gpa-control-header">
+            <span class="gpa-control-label">Assignment / Lab</span>
+            <div class="gpa-control-input-wrap">
+              <input type="number" step="0.5" class="gpa-inline-input row-asg" value="${asgVal}" min="0" max="${asgMax}">
+              <span class="gpa-inline-denom">/ ${asgMax}</span>
+              <span class="gpa-weight-tag row-asg-contrib">0.0 / 5.0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ESA Exam Group -->
+        <div class="gpa-control-group esa-group">
+          <div class="gpa-control-header">
+            <span class="gpa-control-label">ESA Exam (${isCie ? 'CIE · Max 50' : 'Regular · Max 100 · 50% Wt'})</span>
+            <div class="gpa-control-input-wrap">
+              <input type="number" step="1" class="gpa-inline-input row-esa" value="${esaVal}" min="0" max="${esaMax}">
+              <span class="gpa-inline-denom">/ ${esaMax}</span>
+              <span class="gpa-weight-tag esa-tag row-esa-contrib">0.0 / 50</span>
+            </div>
+          </div>
+          <input type="range" class="gpa-range-slider row-esa-slider" min="0" max="${esaMax}" step="1" value="${esaVal}">
+        </div>
+      </div>
+
+      <div class="att-progress-track">
+        <div class="att-progress-bar row-progress-bar safe" style="width: 85%;"></div>
+      </div>
+
+      <div class="gpa-card-footer">
+        <span>CIE: <strong class="row-cie-val">0.0</strong> / 50</span>
+        <span>ESA Contrib: <strong class="row-esa-val">0.0</strong> / 50</span>
+        <span>Total: <strong class="row-total-val">0.0</strong> / 100</span>
+      </div>
     `;
 
-    // Row event listeners
-    const onFieldChange = () => updateRowCalculations(row);
-    row.querySelectorAll('.row-name, .row-cr, .row-isa1, .row-isa2, .row-asg, .row-target, .row-exp-esa').forEach(el => {
-      el.addEventListener('input', onFieldChange);
-      el.addEventListener('change', onFieldChange);
+    // Hook up two-way syncing and calculations
+    const isa1Num = card.querySelector('.row-isa1');
+    const isa1Slider = card.querySelector('.row-isa1-slider');
+    const isa2Num = card.querySelector('.row-isa2');
+    const isa2Slider = card.querySelector('.row-isa2-slider');
+    const asgNum = card.querySelector('.row-asg');
+    const esaNum = card.querySelector('.row-esa');
+    const esaSlider = card.querySelector('.row-esa-slider');
+    const crSelect = card.querySelector('.row-cr');
+    const nameInput = card.querySelector('.row-name');
+
+    // ISA 1 sync
+    isa1Slider.addEventListener('input', () => {
+      isa1Num.value = isa1Slider.value;
+      updateRowCalculations(card);
+    });
+    isa1Num.addEventListener('input', () => {
+      isa1Slider.value = isa1Num.value || '0';
+      updateRowCalculations(card);
     });
 
-    row.querySelector('.row-del-btn').addEventListener('click', () => {
-      row.remove();
+    // ISA 2 sync
+    isa2Slider.addEventListener('input', () => {
+      isa2Num.value = isa2Slider.value;
+      updateRowCalculations(card);
+    });
+    isa2Num.addEventListener('input', () => {
+      isa2Slider.value = isa2Num.value || '0';
+      updateRowCalculations(card);
+    });
+
+    // Assignment
+    asgNum.addEventListener('input', () => {
+      updateRowCalculations(card);
+    });
+
+    // ESA sync
+    esaSlider.addEventListener('input', () => {
+      esaNum.value = esaSlider.value;
+      updateRowCalculations(card);
+    });
+    esaNum.addEventListener('input', () => {
+      esaSlider.value = esaNum.value || '0';
+      updateRowCalculations(card);
+    });
+
+    // Credits & Name change
+    crSelect.addEventListener('change', () => recalcGrandGpa());
+    nameInput.addEventListener('input', () => updateRowCalculations(card));
+
+    // Delete
+    card.querySelector('.row-del-btn').addEventListener('click', () => {
+      card.remove();
       recalcGrandGpa();
     });
 
-    container.append(row);
-    updateRowCalculations(row, false);
+    container.append(card);
+    updateRowCalculations(card, false);
   });
 
   recalcGrandGpa();
 }
 
-function updateRowCalculations(row, triggerGrand = true) {
-  const isCie = row.dataset.isCie === '1' || isCieSubject(row.querySelector('.row-name')?.value, row.querySelector('.row-code')?.textContent, row.dataset.isa1Max);
-  const isa1Max = Number(row.dataset.isa1Max) || (isCie ? 45.0 : 40.0);
-  const isa2Max = Number(row.dataset.isa2Max) || isa1Max;
-  const asgMax = Number(row.dataset.asgMax) || 10.0;
+function updateRowCalculations(card, triggerGrand = true) {
+  const isCie = card.dataset.isCie === '1' || isCieSubject(card.querySelector('.row-name')?.value, card.querySelector('.row-code')?.textContent, card.dataset.isa1Max);
+  const isa1Max = Number(card.dataset.isa1Max) || (isCie ? 45.0 : 40.0);
+  const isa2Max = Number(card.dataset.isa2Max) || isa1Max;
+  const asgMax = Number(card.dataset.asgMax) || 10.0;
   const esaMax = isCie ? 50.0 : 100.0;
 
-  row.dataset.isCie = isCie ? '1' : '0';
-  row.dataset.isa1Max = isa1Max;
-  row.dataset.isa2Max = isa2Max;
-  row.dataset.asgMax = asgMax;
-  row.dataset.esaMax = esaMax;
+  card.dataset.isCie = isCie ? '1' : '0';
+  card.dataset.isa1Max = isa1Max;
+  card.dataset.isa2Max = isa2Max;
+  card.dataset.asgMax = asgMax;
+  card.dataset.esaMax = esaMax;
 
-  const expEsaSub = row.querySelector('.row-exp-esa')?.parentElement?.querySelector('.gpa-cell-sub');
-  if (expEsaSub) expEsaSub.textContent = `/ ${esaMax}`;
-  const expEsaInputEl = row.querySelector('.row-exp-esa');
-  if (expEsaInputEl) expEsaInputEl.max = String(esaMax);
+  const s1 = Math.max(0, Math.min(isa1Max, Number(card.querySelector('.row-isa1').value) || 0));
+  const s2 = Math.max(0, Math.min(isa2Max, Number(card.querySelector('.row-isa2').value) || 0));
+  const sa = Math.max(0, Math.min(asgMax, Number(card.querySelector('.row-asg').value) || 0));
+  const se = Math.max(0, Math.min(esaMax, Number(card.querySelector('.row-esa').value) || 0));
 
-  const isa1Sub = row.querySelector('.row-isa1')?.parentElement?.querySelector('.gpa-cell-sub');
-  if (isa1Sub) isa1Sub.textContent = `/ ${isa1Max}`;
-  const isa1InputEl = row.querySelector('.row-isa1');
-  if (isa1InputEl) isa1InputEl.max = String(isa1Max);
+  const c1 = Math.round(((s1 / isa1Max) * 22.5) * 10) / 10;
+  const c2 = Math.round(((s2 / isa2Max) * 22.5) * 10) / 10;
+  const ca = Math.round(((sa / asgMax) * 5.0) * 10) / 10;
+  const cie = Math.min(50, Math.round((c1 + c2 + ca) * 10) / 10);
 
-  const isa2Sub = row.querySelector('.row-isa2')?.parentElement?.querySelector('.gpa-cell-sub');
-  if (isa2Sub) isa2Sub.textContent = `/ ${isa2Max}`;
-  const isa2InputEl = row.querySelector('.row-isa2');
-  if (isa2InputEl) isa2InputEl.max = String(isa2Max);
+  // Update contribution tags
+  const c1Tag = card.querySelector('.row-isa1-contrib');
+  if (c1Tag) c1Tag.textContent = `${c1.toFixed(1)} / 22.5`;
+  const c2Tag = card.querySelector('.row-isa2-contrib');
+  if (c2Tag) c2Tag.textContent = `${c2.toFixed(1)} / 22.5`;
+  const caTag = card.querySelector('.row-asg-contrib');
+  if (caTag) caTag.textContent = `${ca.toFixed(1)} / 5.0`;
 
-  const isa1 = row.querySelector('.row-isa1').value.trim();
-  const isa2 = row.querySelector('.row-isa2').value.trim();
-  const asg = row.querySelector('.row-asg').value.trim();
-  const target = row.querySelector('.row-target').value;
-  const expEsaInput = row.querySelector('.row-exp-esa').value.trim();
+  // ESA contribution: For regular courses, 50% weightage (se * 0.5). For CIE courses, se.
+  const esaContrib = isCie ? Math.round(se * 10) / 10 : Math.round((se * 0.5) * 10) / 10;
+  const esaTag = card.querySelector('.row-esa-contrib');
+  if (esaTag) esaTag.textContent = `${esaContrib.toFixed(1)} / 50`;
 
-  const cie = calcRowCie(isa1, isa1Max, isa2, isa2Max, asg, asgMax);
-  row.querySelector('.row-cie').textContent = cie;
-
-  const cutoffs = { S: 90, A: 80, B: 70, C: 60, D: 50, E: 40 };
-  const cutoff = cutoffs[target] || 90;
-
-  // ESA needed:
-  // For CIE: ESA is out of 50 -> needed = cutoff - cie
-  // For Regular: ESA is out of 100, scaled by 50% -> needed = (cutoff - cie) * 2
-  const ptsNeeded50 = Math.max(0, cutoff - cie);
-  const neededEsa = isCie ? ptsNeeded50 : (ptsNeeded50 * 2.0);
-  const isImpossible = neededEsa > esaMax;
-
-  const neededPill = row.querySelector('.row-needed');
-  if (isImpossible) {
-    neededPill.textContent = `>${esaMax} (Unattainable)`;
-    neededPill.className = 'gpa-esa-needed-pill row-needed impossible';
-  } else if (neededEsa === 0) {
-    neededPill.textContent = '0.0 (Secured)';
-    neededPill.className = 'gpa-esa-needed-pill row-needed possible';
-  } else {
-    neededPill.textContent = `${neededEsa.toFixed(1)} / ${esaMax}`;
-    neededPill.className = 'gpa-esa-needed-pill row-needed possible';
-  }
-
-  // Calculate actual ESA used for predicted grade
-  let actualEsaScore;
-  if (expEsaInput !== '') {
-    actualEsaScore = Math.max(0, Math.min(esaMax, Number(expEsaInput)));
-  } else {
-    actualEsaScore = isImpossible ? 0 : Math.min(esaMax, neededEsa);
-  }
-
-  // ESA contribution to the 100-mark course total:
-  // For regular courses: actualEsaScore * 0.5 (scaled down from 100 to 50)
-  // For CIE: actualEsaScore (out of 50)
-  const esaContrib = isCie ? actualEsaScore : (actualEsaScore * 0.5);
-  const total = Math.min(100, Math.max(0, cie + esaContrib));
+  const total = Math.min(100, Math.max(0, Math.round((cie + esaContrib) * 10) / 10));
   const info = getGradeInfo(total);
 
-  const badge = row.querySelector('.row-badge');
-  badge.textContent = info.grade;
-  badge.className = `gpa-grade-badge row-badge ${info.cls}`;
+  // Update footer
+  const cieValEl = card.querySelector('.row-cie-val');
+  if (cieValEl) cieValEl.textContent = cie.toFixed(1);
+  const esaValEl = card.querySelector('.row-esa-val');
+  if (esaValEl) esaValEl.textContent = esaContrib.toFixed(1);
+  const totalValEl = card.querySelector('.row-total-val');
+  if (totalValEl) totalValEl.textContent = total.toFixed(1);
+
+  // Update grade badge
+  const badge = card.querySelector('.row-badge');
+  if (badge) {
+    badge.className = `gpa-card-grade-badge row-badge ${info.cls}`;
+    const letterEl = badge.querySelector('.gpa-grade-letter');
+    if (letterEl) letterEl.textContent = info.grade;
+    const ptsEl = badge.querySelector('.gpa-grade-points');
+    if (ptsEl) ptsEl.textContent = `${info.points.toFixed(1)} GP`;
+    badge.dataset.grade = info.grade;
+    badge.dataset.points = String(info.points);
+  }
+
+  // Update progress bar
+  const pBar = card.querySelector('.row-progress-bar');
+  if (pBar) {
+    pBar.style.width = `${Math.min(100, total)}%`;
+    if (total >= 70) {
+      pBar.className = 'att-progress-bar row-progress-bar safe';
+    } else if (total >= 50) {
+      pBar.className = 'att-progress-bar row-progress-bar warning';
+    } else {
+      pBar.className = 'att-progress-bar row-progress-bar critical';
+    }
+  }
 
   if (triggerGrand) {
     recalcGrandGpa();
@@ -1202,15 +1282,14 @@ function updateRowCalculations(row, triggerGrand = true) {
 function recalcGrandGpa() {
   const container = $('gpa-subjects-container');
   if (!container) return;
-  const rows = container.querySelectorAll('.gpa-subject-row');
+  const cards = container.querySelectorAll('.gpa-card');
   let totalCredits = 0;
   let weightedPoints = 0;
 
-  rows.forEach(r => {
-    const cr = Number(r.querySelector('.row-cr').value) || 4;
-    const badgeText = r.querySelector('.row-badge').textContent.trim();
-    const pointMap = { S: 10, A: 9, B: 8, C: 7, D: 6, E: 5, F: 0 };
-    const pts = pointMap[badgeText] ?? 0;
+  cards.forEach(c => {
+    const cr = Number(c.querySelector('.row-cr')?.value) || 4;
+    const badge = c.querySelector('.row-badge');
+    const pts = (badge?.dataset.points !== undefined && badge?.dataset.points !== '') ? Number(badge.dataset.points) : getGradeInfo(Number(c.querySelector('.row-total-val')?.textContent) || 0).points;
     totalCredits += cr;
     weightedPoints += (cr * pts);
   });
@@ -1229,7 +1308,7 @@ function recalcGrandGpa() {
       else if (numSgpa >= 8.0) insight = 'Great performance! Solid First Class with Distinction.';
       else if (numSgpa >= 7.0) insight = 'Good standing! Consistent First Class performance.';
       else insight = 'Focus on high-weightage ESA subjects to boost your SGPA.';
-      $('gpa-insight-text').textContent = `${insight} (${weightedPoints} grade points over ${totalCredits} credits).`;
+      $('gpa-insight-text').textContent = `${insight} (${weightedPoints.toFixed(1)} grade points over ${totalCredits} credits).`;
     }
   }
 }
@@ -1416,34 +1495,102 @@ async function checkSystemAndAuth() {
         sideAuthBtn.textContent = 'Log Out';
         sideAuthBtn.onclick = doLogout;
       }
+
+      const cleanSrn = (p.srn || '').replace(/^(?:SRN\s*:\s*|Roll\s*:\s*)/i, '').trim() || '–';
+      const cleanSemester = (p.semester && p.semester !== '–' && p.semester !== '-') ? p.semester : 'Sem-3';
+      const cleanBranch = (p.branch && p.branch !== '–' && p.branch !== 'Engineering') ? p.branch : 'Computer Science and Engineering';
+      const cleanCampus = (p.campus && p.campus !== 'PES University') ? p.campus : 'PES University (Ring Road)';
+      const hasPrn = !!(p.prn && p.prn.trim());
+
       profCard.innerHTML = `
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-          <div style="font-size: 15px; font-weight: 700; color: var(--text-main);">${escapeHtml(p.name)}</div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div id="profile-name-text" style="font-size: 15px; font-weight: 700; color: var(--text-main);">${escapeHtml(p.name)}</div>
+            <button class="action" id="btn-edit-name" style="padding: 1px 7px; font-size: 10px;" title="Edit display name">Edit Name</button>
+          </div>
           <span class="badge-safe">Active Session</span>
         </div>
         <div class="profile-card-grid">
           <div class="profile-meta-item">
             <span class="profile-meta-label">SRN / Roll</span>
-            <span class="profile-meta-val">${escapeHtml(p.srn || '–')}</span>
+            <span class="profile-meta-val">${escapeHtml(cleanSrn)}</span>
           </div>
           <div class="profile-meta-item">
             <span class="profile-meta-label">PRN</span>
-            <span class="profile-meta-val">${escapeHtml(p.prn || '–')}</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="profile-meta-val" id="profile-prn-display" style="${hasPrn ? '' : 'color: var(--text-dim);'}">${escapeHtml(hasPrn ? p.prn : 'Not Set')}</span>
+              <button class="action" id="btn-toggle-prn-input" style="padding: 1px 7px; font-size: 10px;">${hasPrn ? 'Edit' : '+ Add'}</button>
+            </div>
+            <div id="profile-prn-edit-row" class="hidden" style="display: flex; gap: 6px; margin-top: 5px;">
+              <input type="text" id="profile-prn-input" placeholder="e.g. PES1202300468" value="${escapeHtml(p.prn || '')}" style="padding: 3px 6px; font-size: 12px; width: 130px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 4px; color: var(--text-main);">
+              <button class="sync-button" id="btn-save-prn" style="padding: 3px 8px; font-size: 11px;">Save</button>
+            </div>
           </div>
           <div class="profile-meta-item">
             <span class="profile-meta-label">Program & Branch</span>
-            <span class="profile-meta-val">${escapeHtml(p.branch || 'Engineering')}</span>
+            <span class="profile-meta-val">${escapeHtml(cleanBranch)}</span>
           </div>
           <div class="profile-meta-item">
             <span class="profile-meta-label">Current Semester</span>
-            <span class="profile-meta-val">${escapeHtml(p.semester || '–')}</span>
+            <span class="profile-meta-val">${escapeHtml(cleanSemester)}</span>
           </div>
           <div class="profile-meta-item">
             <span class="profile-meta-label">Campus</span>
-            <span class="profile-meta-val">${escapeHtml(p.campus || 'PES University')}</span>
+            <span class="profile-meta-val">${escapeHtml(cleanCampus)}</span>
           </div>
         </div>
       `;
+
+      // PRN edit toggle & save
+      const prnToggleBtn = $('btn-toggle-prn-input');
+      const prnEditRow = $('profile-prn-edit-row');
+      const prnInput = $('profile-prn-input');
+      const prnSaveBtn = $('btn-save-prn');
+
+      prnToggleBtn?.addEventListener('click', () => {
+        prnEditRow?.classList.toggle('hidden');
+        if (prnEditRow && !prnEditRow.classList.contains('hidden')) {
+          prnInput?.focus();
+        }
+      });
+
+      const savePrnFn = async () => {
+        const val = prnInput?.value.trim() || '';
+        try {
+          const res = await fetch('/api/auth/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prn: val })
+          });
+          if (res.ok) {
+            checkAuth();
+          }
+        } catch (e) {
+          console.error('Failed to save PRN:', e);
+        }
+      };
+
+      prnSaveBtn?.addEventListener('click', savePrnFn);
+      prnInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') savePrnFn();
+      });
+
+      // Name edit toggle & save
+      $('btn-edit-name')?.addEventListener('click', async () => {
+        const newName = prompt('Enter your student display name:', p.name);
+        if (newName && newName.trim() && newName.trim() !== p.name) {
+          try {
+            await fetch('/api/auth/profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: newName.trim() })
+            });
+            checkAuth();
+          } catch (e) {
+            console.error('Failed to update name:', e);
+          }
+        }
+      });
       loginBtn.classList.add('hidden');
       logoutBtn.classList.remove('hidden');
     } else {

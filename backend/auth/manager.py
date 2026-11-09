@@ -245,16 +245,24 @@ class AuthManager:
         name = name_tag.get_text(strip=True) if name_tag else fallback_username
 
         srn_tag = soup.find(id="studentSRN") or soup.find(text=re.compile(r"PES\dUG\d\d[A-Z]{2}\d{3}"))
-        srn = srn_tag.strip() if srn_tag and isinstance(srn_tag, str) else fallback_username
+        raw_srn = srn_tag.strip() if srn_tag and isinstance(srn_tag, str) else fallback_username
+        srn = re.sub(r'^(?:SRN\s*:\s*|Roll\s*:\s*)', '', raw_srn, flags=re.IGNORECASE).strip()
+
+        # Look for PRN pattern
+        prn_match = re.search(r'\b(PES\d{8,14})\b', html)
+        prn = prn_match.group(1) if prn_match else ""
+
+        # Campus
+        campus = "PES University (Electronic City)" if "PES2" in srn.upper() else "PES University (Ring Road)"
 
         return {
             "name": name,
             "srn": srn,
-            "prn": "",
+            "prn": prn,
             "branch": "",
             "semester": "",
             "section": "",
-            "campus": "PES University",
+            "campus": campus,
             "email": "",
             "auth_provider": "pesu_web"
         }

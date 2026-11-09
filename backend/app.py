@@ -146,6 +146,26 @@ def create_app(config: Optional[Config] = None) -> Flask:
         prof = db.get_profile()
         return jsonify(prof or {})
 
+    @app.post("/api/auth/profile")
+    def update_profile():
+        data = request.get_json(silent=True) or {}
+        prof = db.get_profile() or {
+            "name": "",
+            "srn": "",
+            "prn": "",
+            "branch": "",
+            "semester": "",
+            "section": "",
+            "campus": "",
+            "email": "",
+            "auth_provider": "local"
+        }
+        for k in ["name", "srn", "prn", "branch", "semester", "section", "campus", "email"]:
+            if k in data and data[k] is not None:
+                prof[k] = str(data[k]).strip()
+        db.save_profile(prof)
+        return jsonify({"message": "Profile updated successfully.", "profile": db.get_profile()})
+
     # --- Courses & Slides Endpoints ---
     @app.get("/api/courses")
     def courses():
