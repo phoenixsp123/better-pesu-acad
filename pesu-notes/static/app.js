@@ -5,6 +5,8 @@
    ===================================================================== */
 
 const $ = id => document.getElementById(id);
+const openModal = id => { $(id)?.classList.remove('hidden'); };
+const closeModal = id => { $(id)?.classList.add('hidden'); };
 const nav = $('navigation');
 
 let selectedFile = null;
@@ -24,37 +26,392 @@ const createButton = (className, label, handler) => {
   return button;
 };
 
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 const fileURL = path => '/files/' + path.replace(/^slides[\\/]/i, '').split(/[\\/]/).map(encodeURIComponent).join('/');
 
 // =========================================================
 // 1. PRIMARY STUDY WORKSPACE & PDF VIEWER
 // =========================================================
 
-function openFile(file, title, breadcrumb, button) {
+let currentPdfPage = 1;
+let totalPdfPages = 1;
+let activePdfDoc = null;
+let pdfZoomScale = 1.0;
+let basePageWidth = 720;
+let basePageHeight = 405;
+let renderedPages = new Set();
+let renderingPages = new Set();
+let renderDebounceTimer = null;
+
+function updatePdfPageUI() {
+  const indicator = $('pdf-page-indicator');
+  if (indicator) {
+    if (totalPdfPages > 1) {
+      indicator.textContent = `Page ${currentPdfPage} / ${totalPdfPages}`;
+    } else {
+      indicator.textContent = `Page ${currentPdfPage}`;
+    }
+  }
+  const prevBtn = $('btn-pdf-prev');
+  if (prevBtn) prevBtn.disabled = currentPdfPage <= 1;
+  const nextBtn = $('btn-pdf-next');
+  if (nextBtn) nextBtn.disabled = (totalPdfPages > 1 && currentPdfPage >= totalPdfPages);
+}
+
+function updatePdfZoomUI() {
+  const zoomInd = $('pdf-zoom-indicator');
+  if (zoomInd) {
+    zoomInd.textContent = `${Math.round(pdfZoomScale * 100)}%`;
+  }
+}
+
+function setPdfZoom(newScale) {
+  newScale = Math.max(0.4, Math.min(3.5, Math.round(newScale * 100) / 100));
+  if (Math.abs(newScale - pdfZoomScale) < 0.01) return;
+
+  const viewportEl = $('pdf-scroll-viewport');
+  const prevScrollTop = viewportEl ? viewportEl.scrollTop : 0;
+  const prevScrollHeight = viewportEl ? viewportEl.scrollHeight : 1;
+  const scrollRatio = prevScrollTop / Math.max(1, prevScrollHeight);
+
+  pdfZoomScale = newScale;
+  updatePdfZoomUI();
+
+  // Resize all wrappers immediately for snappy visual response
+  const scaledWidth = Math.floor(basePageWidth * pdfZoomScale);
+  const scaledHeight = Math.floor(basePageHeight * pdfZoomScale);
+  const wrappers = document.querySelectorAll('.pdf-page-wrapper');
+  wrappers.forEach(wrap => {
+    wrap.style.width = `${scaledWidth}px`;
+    wrap.style.height = `${scaledHeight}px`;
+    const canvas = wrap.querySelector('canvas');
+    if (canvas) {
+      canvas.style.width = `${scaledWidth}px`;
+      canvas.style.height = `${scaledHeight}px`;
+    }
+  });
+
+  // Re-render visible pages at the new scale
+  renderedPages.clear();
+  scheduleVisiblePagesRender();
+
+  // Preserve relative scroll position
+  if (viewportEl) {
+    requestAnimationFrame(() => {
+      viewportEl.scrollTop = scrollRatio * viewportEl.scrollHeight;
+    });
+  }
+}
+
+function fitPdfToScreen() {
+  const viewportEl = $('pdf-scroll-viewport');
+  if (!viewportEl || !basePageWidth || !basePageHeight) return;
+  const availWidth = viewportEl.clientWidth - 40;
+  const availHeight = viewportEl.clientHeight - 40;
+  if (availWidth <= 0 || availHeight <= 0) return;
+  const scaleW = availWidth / basePageWidth;
+  const scaleH = availHeight / basePageHeight;
+  const optimal = Math.min(scaleW, scaleH);
+  setPdfZoom(Math.max(0.4, Math.min(3.5, optimal)));
+}
+
+function buildPagePlaceholders() {
+  const container = $('pdf-pages-container');
+  if (!container) return;
+  container.replaceChildren();
+  renderedPages.clear();
+  renderingPages.clear();
+
+  const scaledWidth = Math.floor(basePageWidth * pdfZoomScale);
+  const scaledHeight = Math.floor(basePageHeight * pdfZoomScale);
+
+  const fragment = document.createDocumentFragment();
+  for (let i = 1; i <= totalPdfPages; i++) {
+    const wrap = document.createElement('div');
+    wrap.className = 'pdf-page-wrapper pdf-page-placeholder' + (i === currentPdfPage ? ' active-page' : '');
+    wrap.id = `pdf-page-wrap-${i}`;
+    wrap.dataset.page = String(i);
+    wrap.style.width = `${scaledWidth}px`;
+    wrap.style.height = `${scaledHeight}px`;
+
+    const span = document.createElement('span');
+    span.textContent = `Slide ${i} / ${totalPdfPages}`;
+    wrap.appendChild(span);
+
+    fragment.appendChild(wrap);
+  }
+  container.appendChild(fragment);
+}
+
+function scheduleVisiblePagesRender() {
+  if (renderDebounceTimer) clearTimeout(renderDebounceTimer);
+  renderDebounceTimer = setTimeout(renderVisiblePages, 40);
+}
+
+async function renderVisiblePages() {
+  if (!activePdfDoc) return;
+  const viewportEl = $('pdf-scroll-viewport');
+  if (!viewportEl) return;
+
+  const vpRect = viewportEl.getBoundingClientRect();
+  const buffer = vpRect.height * 1.5;
+
+  const wrappers = viewportEl.querySelectorAll('.pdf-page-wrapper');
+  for (const wrap of wrappers) {
+    const pageNum = parseInt(wrap.dataset.page, 10);
+    const rect = wrap.getBoundingClientRect();
+    const isVisibleOrNear = (rect.bottom >= vpRect.top - buffer) && (rect.top <= vpRect.bottom + buffer);
+
+    if (isVisibleOrNear) {
+      if (!renderedPages.has(pageNum) && !renderingPages.has(pageNum)) {
+        renderSinglePage(pageNum);
+      }
+    } else {
+      // Memory cleanup for long documents (e.g. 200+ page combined unit PDFs)
+      if (renderedPages.has(pageNum) && Math.abs(pageNum - currentPdfPage) > 5) {
+        const canvas = wrap.querySelector('canvas');
+        if (canvas) {
+          canvas.remove();
+          renderedPages.delete(pageNum);
+          wrap.classList.add('pdf-page-placeholder');
+          if (!wrap.querySelector('span')) {
+            const span = document.createElement('span');
+            span.textContent = `Slide ${pageNum} / ${totalPdfPages}`;
+            wrap.appendChild(span);
+          }
+        }
+      }
+    }
+  }
+}
+
+async function renderSinglePage(pageNum) {
+  if (renderingPages.has(pageNum) || renderedPages.has(pageNum) || !activePdfDoc) return;
+  renderingPages.add(pageNum);
+  try {
+    const wrap = $(`pdf-page-wrap-${pageNum}`);
+    if (!wrap) return;
+
+    const page = await activePdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: pdfZoomScale });
+    const dpr = window.devicePixelRatio || 1;
+
+    let canvas = wrap.querySelector('canvas');
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      canvas.className = 'pdf-page-canvas';
+      const placeholderSpan = wrap.querySelector('span');
+      if (placeholderSpan) placeholderSpan.remove();
+      wrap.appendChild(canvas);
+    }
+
+    canvas.width = Math.floor(viewport.width * dpr);
+    canvas.height = Math.floor(viewport.height * dpr);
+    canvas.style.width = `${Math.floor(viewport.width)}px`;
+    canvas.style.height = `${Math.floor(viewport.height)}px`;
+    wrap.style.width = `${Math.floor(viewport.width)}px`;
+    wrap.style.height = `${Math.floor(viewport.height)}px`;
+
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const renderTask = page.render({
+      canvasContext: ctx,
+      viewport: viewport
+    });
+
+    await renderTask.promise;
+    renderedPages.add(pageNum);
+    wrap.classList.remove('pdf-page-placeholder');
+  } catch (err) {
+    console.warn(`Render error page ${pageNum}:`, err);
+  } finally {
+    renderingPages.delete(pageNum);
+  }
+}
+
+// Scroll Tracking: updates the top counter in real time as the user scrolls
+function onPdfViewportScroll() {
+  if (!activePdfDoc || totalPdfPages <= 1) return;
+  const viewportEl = $('pdf-scroll-viewport');
+  if (!viewportEl) return;
+
+  const vpRect = viewportEl.getBoundingClientRect();
+  const centerY = vpRect.top + (vpRect.height / 2);
+
+  const wrappers = viewportEl.querySelectorAll('.pdf-page-wrapper');
+  let closestPage = currentPdfPage;
+  let minDiff = Infinity;
+
+  for (const wrap of wrappers) {
+    const rect = wrap.getBoundingClientRect();
+    const wrapCenterY = rect.top + (rect.height / 2);
+    const diff = Math.abs(wrapCenterY - centerY);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestPage = parseInt(wrap.dataset.page, 10);
+    }
+  }
+
+  if (closestPage !== currentPdfPage && closestPage >= 1 && closestPage <= totalPdfPages) {
+    currentPdfPage = closestPage;
+    updatePdfPageUI();
+    wrappers.forEach(w => w.classList.toggle('active-page', parseInt(w.dataset.page, 10) === currentPdfPage));
+  }
+
+  scheduleVisiblePagesRender();
+}
+
+function goToPdfPage(pageNum) {
+  scrollToPdfPage(pageNum);
+}
+
+function scrollToPdfPage(pageNum) {
+  pageNum = Math.max(1, Math.min(totalPdfPages, pageNum));
+  currentPdfPage = pageNum;
+  updatePdfPageUI();
+
+  if (activePdfDoc) {
+    const viewportEl = $('pdf-scroll-viewport');
+    const wrap = $(`pdf-page-wrap-${pageNum}`);
+    if (viewportEl && wrap) {
+      // Calculate wrap center relative to viewport center
+      const wrapRect = wrap.getBoundingClientRect();
+      const vpRect = viewportEl.getBoundingClientRect();
+      const currentScrollTop = viewportEl.scrollTop;
+      const wrapCenter = wrapRect.top + (wrapRect.height / 2);
+      const vpCenter = vpRect.top + (vpRect.height / 2);
+      const delta = wrapCenter - vpCenter;
+
+      viewportEl.scrollTo({
+        top: Math.max(0, currentScrollTop + delta),
+        behavior: 'smooth'
+      });
+      wrap.classList.add('active-page');
+      setTimeout(() => wrap.classList.remove('active-page'), 1500);
+    }
+    scheduleVisiblePagesRender();
+  } else {
+    // Fallback for iframe mode
+    goToPdfPageIframe(pageNum);
+  }
+}
+
+function nextPdfPage() {
+  if (currentPdfPage < totalPdfPages) {
+    scrollToPdfPage(currentPdfPage + 1);
+  }
+}
+
+function prevPdfPage() {
+  if (currentPdfPage > 1) {
+    scrollToPdfPage(currentPdfPage - 1);
+  }
+}
+
+function goToPdfPageIframe(pageNum) {
+  const viewer = $('pdf-viewer');
+  if (!viewer || !currentDoc) return;
+  const targetUrl = `${fileURL(currentDoc)}#page=${pageNum}&toolbar=1&navpanes=0`;
+  try {
+    if (viewer.contentWindow?.location) {
+      viewer.contentWindow.location.replace(targetUrl);
+    } else {
+      viewer.src = targetUrl;
+    }
+  } catch (_) {
+    viewer.src = targetUrl;
+  }
+}
+
+async function openFile(file, title, breadcrumb, button) {
   if (!file.path || !String(file.name || file.path).toLowerCase().endsWith('.pdf')) return;
+  if (activeModule !== 'study') {
+    switchModule('study');
+  }
   selectedFile?.classList.remove('selected');
   selectedFile = button;
   button?.classList.add('selected');
 
   currentDoc = file.path;
-  const url = fileURL(file.path);
+  currentPdfPage = 1;
+  totalPdfPages = 1;
+  updatePdfPageUI();
 
-  const viewer = $('pdf-viewer');
-  viewer.src = url;
-  viewer.classList.remove('hidden');
-  $('study-fullscreen').classList.remove('hidden');
-  $('viewer-placeholder').classList.add('hidden');
+  $('pdf-page-controls')?.classList.remove('hidden');
+  $('pdf-zoom-controls')?.classList.remove('hidden');
+  $('study-fullscreen')?.classList.remove('hidden');
+  $('bookmark-current')?.classList.remove('hidden');
+  $('btn-open-native')?.classList.remove('hidden');
+  $('btn-reveal-finder')?.classList.remove('hidden');
+  $('btn-save-copy')?.classList.remove('hidden');
+  $('viewer-placeholder')?.classList.add('hidden');
+
   $('document-title').textContent = title;
   $('document-path').textContent = breadcrumb;
-
-  $('open-link').href = url;
-  $('download-link').href = url;
-  $('open-link').classList.remove('hidden');
-  $('download-link').classList.remove('hidden');
-  $('file-count').textContent = 'PDF ready to study';
+  $('file-count').textContent = 'Loading lecture slides…';
 
   updateBookmarkButton();
   recordRecentFile(file.path, title, breadcrumb);
+
+  const url = fileURL(file.path);
+
+  // Try Native High-DPI Canvas PDF.js Viewer
+  if (window.pdfjsLib) {
+    try {
+      $('pdf-viewer')?.classList.add('hidden');
+      const stage = $('pdf-stage');
+      if (stage) stage.classList.remove('hidden');
+
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/vendor/pdfjs/pdf.worker.min.js';
+      const loadingTask = pdfjsLib.getDocument(url);
+      activePdfDoc = await loadingTask.promise;
+      totalPdfPages = activePdfDoc.numPages;
+
+      const firstPage = await activePdfDoc.getPage(1);
+      const initialVp = firstPage.getViewport({ scale: 1.0 });
+      basePageWidth = initialVp.width || 720;
+      basePageHeight = initialVp.height || 405;
+
+      const viewportEl = $('pdf-scroll-viewport');
+      const availWidth = (viewportEl?.clientWidth || 800) - 40;
+      const availHeight = (viewportEl?.clientHeight || 600) - 40;
+      const scaleW = availWidth / basePageWidth;
+      const scaleH = availHeight / basePageHeight;
+      pdfZoomScale = Math.max(0.4, Math.min(2.5, Math.min(scaleW, scaleH)));
+
+      buildPagePlaceholders();
+      updatePdfZoomUI();
+      updatePdfPageUI();
+      scheduleVisiblePagesRender();
+
+      if (viewportEl) {
+        viewportEl.scrollTop = 0;
+        viewportEl.focus();
+      }
+      button?.blur();
+
+      $('file-count').textContent = `${totalPdfPages} pages ready to study`;
+      return;
+    } catch (err) {
+      console.warn('PDF.js rendering fallback to iframe:', err);
+    }
+  }
+
+  // Fallback to iframe if PDF.js is unavailable
+  $('pdf-stage')?.classList.add('hidden');
+  const viewer = $('pdf-viewer');
+  if (viewer) {
+    viewer.src = `${url}#page=1`;
+    viewer.classList.remove('hidden');
+  }
 }
 
 function renderNavigation(query = '') {
@@ -124,8 +481,11 @@ function renderNavigation(query = '') {
 
             matched++;
             unitHasMatch = true;
-            const button = createButton('nav-file', file.name || lecture.title || 'Lecture PDF', () => {
-              openFile(file, file.name || lecture.title, `${semesterName} / ${subject.title || subjectName} / ${unitName}`, button);
+            const isCombined = lecture.class_no === 0 || (file.name || '').includes('[Combined]');
+            const btnClass = isCombined ? 'nav-file nav-file-combined' : 'nav-file';
+            const displayTitle = isCombined ? `📚 All Lectures Combined (${unitName})` : (file.name || lecture.title || 'Lecture PDF');
+            const button = createButton(btnClass, displayTitle, () => {
+              openFile(file, displayTitle, `${semesterName} / ${subject.title || subjectName} / ${unitName}`, button);
             });
             unitBody.append(button);
           }
@@ -164,33 +524,265 @@ function renderNavigation(query = '') {
 
 $('search')?.addEventListener('input', event => renderNavigation(event.target.value));
 
-// Fullscreen Focus View
+// Fullscreen Focus View (Bulletproof In-App & OS Fullscreen)
 const studyWorkspace = document.querySelector('.workspace');
 const studyFullscreenButton = $('study-fullscreen');
+let isFocusMode = false;
 
-function updateStudyFullscreenUI() {
-  const active = document.fullscreenElement === studyWorkspace;
-  studyWorkspace.classList.toggle('study-fullscreen', active);
-  studyFullscreenButton.textContent = active ? '⤢ Exit Focus' : '⛶ Focus View';
+function setStudyFocusMode(enabled) {
+  isFocusMode = enabled;
+  studyWorkspace.classList.toggle('study-fullscreen', isFocusMode);
+  document.body.classList.toggle('focus-mode-active', isFocusMode);
+
+  if (studyFullscreenButton) {
+    studyFullscreenButton.textContent = isFocusMode ? '⤢ Exit Focus' : '⛶ Focus View';
+    studyFullscreenButton.title = isFocusMode ? 'Exit focus mode (Esc)' : 'Fullscreen distraction-free study mode';
+  }
+
+  // Attempt OS/browser fullscreen if supported as progressive enhancement
+  if (isFocusMode) {
+    try {
+      if (document.fullscreenEnabled && !document.fullscreenElement && studyWorkspace.requestFullscreen) {
+        studyWorkspace.requestFullscreen().catch(() => {});
+      }
+    } catch (_) {}
+  } else {
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch (_) {}
+  }
+
+  // Refit PDF smoothly when entering/exiting focus
+  if (activePdfDoc) {
+    setTimeout(fitPdfToScreen, 80);
+    setTimeout(fitPdfToScreen, 300);
+  }
 }
 
-studyFullscreenButton?.addEventListener('click', async () => {
-  try {
-    if (document.fullscreenElement === studyWorkspace) {
-      await document.exitFullscreen();
-    } else if (!document.fullscreenElement && !$('pdf-viewer').classList.contains('hidden')) {
-      await studyWorkspace.requestFullscreen();
-    }
-  } catch (error) {
-    console.error('Fullscreen toggle error:', error);
+studyFullscreenButton?.addEventListener('click', () => {
+  const isPdfOpen = !$('pdf-stage')?.classList.contains('hidden') || !$('pdf-viewer')?.classList.contains('hidden');
+  if (isPdfOpen && currentDoc) {
+    setStudyFocusMode(!isFocusMode);
   }
 });
 
-$('study-exit')?.addEventListener('click', async () => {
-  if (document.fullscreenElement === studyWorkspace) await document.exitFullscreen();
+$('study-exit')?.addEventListener('click', () => {
+  setStudyFocusMode(false);
 });
 
-document.addEventListener('fullscreenchange', updateStudyFullscreenUI);
+// Escape key to exit focus mode
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && isFocusMode) {
+    e.preventDefault();
+    setStudyFocusMode(false);
+  }
+});
+
+// PDF Keyboard Navigation (Arrow Keys / Page Keys: only navigates PDF, never scrolls outer page)
+function handlePdfKeyNavigation(e) {
+  // Never intercept when typing into an input, textarea, select, or contenteditable
+  const activeEl = document.activeElement;
+  const target = e.target;
+  const isTyping = el => {
+    if (!el) return false;
+    const tag = (el.tagName || '').toUpperCase();
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+  };
+  if (isTyping(activeEl) || isTyping(target)) {
+    return;
+  }
+
+  const stage = $('pdf-stage');
+  const viewer = $('pdf-viewer');
+  const isPdfOpen = (!stage?.classList.contains('hidden')) || (!viewer?.classList.contains('hidden'));
+  if (!isPdfOpen || !currentDoc) {
+    return;
+  }
+
+  if (e.key === 'ArrowRight' || e.code === 'ArrowRight' || e.key === 'ArrowDown' || e.code === 'ArrowDown' || e.key === 'PageDown') {
+    e.preventDefault();
+    e.stopPropagation();
+    nextPdfPage();
+  } else if (e.key === 'ArrowLeft' || e.code === 'ArrowLeft' || e.key === 'ArrowUp' || e.code === 'ArrowUp' || e.key === 'PageUp') {
+    e.preventDefault();
+    e.stopPropagation();
+    prevPdfPage();
+  }
+}
+
+document.addEventListener('keydown', handlePdfKeyNavigation, true);
+
+// Also attach inside iframe upon load so focus inside the PDF plugin also catches arrow keys
+const pdfViewerEl = $('pdf-viewer');
+if (pdfViewerEl) {
+  pdfViewerEl.addEventListener('load', () => {
+    try {
+      pdfViewerEl.contentDocument?.addEventListener('keydown', handlePdfKeyNavigation, true);
+      pdfViewerEl.contentWindow?.addEventListener('keydown', handlePdfKeyNavigation, true);
+    } catch (_) {}
+  });
+}
+
+// Wire up PDF Page navigation buttons
+$('btn-pdf-prev')?.addEventListener('click', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  prevPdfPage();
+  e.currentTarget?.blur();
+});
+
+$('btn-pdf-next')?.addEventListener('click', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  nextPdfPage();
+  e.currentTarget?.blur();
+});
+
+$('pdf-page-indicator')?.addEventListener('click', () => {
+  const maxP = totalPdfPages > 1 ? totalPdfPages : 999;
+  const val = prompt(`Go to page (1 - ${maxP}):`, String(currentPdfPage));
+  if (val) {
+    const num = parseInt(val, 10);
+    if (!isNaN(num) && num >= 1) {
+      goToPdfPage(num);
+    }
+  }
+});
+
+// Viewport Scroll & Trackpad Pinch-to-Zoom
+const pdfScrollViewport = $('pdf-scroll-viewport');
+if (pdfScrollViewport) {
+  // Click to focus viewport so arrow keys work immediately
+  pdfScrollViewport.addEventListener('click', () => {
+    pdfScrollViewport.focus();
+  });
+
+  // Real-time page indicator tracking on scroll
+  pdfScrollViewport.addEventListener('scroll', onPdfViewportScroll, { passive: true });
+
+  // Trackpad pinch-to-zoom (macOS Chrome, Safari, and WebKit send wheel with ctrlKey on trackpad pinch)
+  pdfScrollViewport.addEventListener('wheel', e => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const zoomFactor = Math.exp(-e.deltaY * 0.012);
+      setPdfZoom(pdfZoomScale * zoomFactor);
+    }
+  }, { passive: false });
+
+  // Safari / WebKit native trackpad gesture events
+  let gestureBaseScale = 1.0;
+  pdfScrollViewport.addEventListener('gesturestart', e => {
+    e.preventDefault();
+    gestureBaseScale = pdfZoomScale;
+  });
+  pdfScrollViewport.addEventListener('gesturechange', e => {
+    e.preventDefault();
+    if (gestureBaseScale && e.scale) {
+      setPdfZoom(gestureBaseScale * e.scale);
+    }
+  });
+  pdfScrollViewport.addEventListener('gestureend', e => {
+    e.preventDefault();
+  });
+}
+
+// PDF Zoom Toolbar Buttons
+$('btn-pdf-zoom-in')?.addEventListener('click', e => {
+  e.preventDefault();
+  setPdfZoom(pdfZoomScale * 1.2);
+});
+
+$('btn-pdf-zoom-out')?.addEventListener('click', e => {
+  e.preventDefault();
+  setPdfZoom(pdfZoomScale / 1.2);
+});
+
+$('btn-pdf-zoom-fit')?.addEventListener('click', e => {
+  e.preventDefault();
+  fitPdfToScreen();
+});
+
+$('pdf-zoom-indicator')?.addEventListener('click', e => {
+  e.preventDefault();
+  setPdfZoom(1.0);
+});
+
+window.addEventListener('resize', () => {
+  if (activePdfDoc) {
+    scheduleVisiblePagesRender();
+  }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && isFocusMode) {
+    setStudyFocusMode(false);
+  }
+});
+
+// Document Actions: Native Preview, Reveal in Finder, and Save Copy
+$('btn-open-native')?.addEventListener('click', async () => {
+  if (!currentDoc) return;
+  try {
+    if (window.pywebview?.api?.open_file_native) {
+      await window.pywebview.api.open_file_native(currentDoc);
+    } else {
+      await fetch('/api/files/open-native', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: currentDoc })
+      });
+    }
+  } catch (err) {
+    console.error('Failed to open native viewer:', err);
+  }
+});
+
+$('btn-reveal-finder')?.addEventListener('click', async () => {
+  if (!currentDoc) return;
+  try {
+    if (window.pywebview?.api?.reveal_in_finder) {
+      await window.pywebview.api.reveal_in_finder(currentDoc);
+    } else {
+      await fetch('/api/files/reveal-in-finder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: currentDoc })
+      });
+    }
+  } catch (err) {
+    console.error('Failed to reveal in Finder:', err);
+  }
+});
+
+$('btn-save-copy')?.addEventListener('click', async () => {
+  if (!currentDoc) return;
+  const fileName = currentDoc.split(/[\\/]/).pop() || 'lecture.pdf';
+  try {
+    if (window.pywebview?.api?.save_file_copy) {
+      const ok = await window.pywebview.api.save_file_copy(currentDoc);
+      if (ok) {
+        $('file-count').textContent = `Saved copy of ${fileName}`;
+      }
+    } else {
+      // Safe blob download without top-level window navigation
+      const res = await fetch(fileURL(currentDoc));
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      $('file-count').textContent = `Downloaded copy of ${fileName}`;
+    }
+  } catch (err) {
+    console.error('Failed to save copy:', err);
+  }
+});
 
 // =========================================================
 // 2. POMODORO TIMER (ORIGINAL ACCURATE WALL-CLOCK LOGIC)
@@ -402,9 +994,6 @@ $('tab-recent')?.addEventListener('click', () => selectLibraryTab('recent'));
 
 function switchModule(moduleName) {
   activeModule = moduleName;
-  document.querySelectorAll('.module-nav-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.id === `tab-nav-${moduleName}`);
-  });
 
   const views = {
     study: 'view-study-space',
@@ -418,16 +1007,29 @@ function switchModule(moduleName) {
 
   Object.entries(views).forEach(([mod, viewId]) => {
     const el = $(viewId);
-    if (el) el.classList.toggle('hidden', mod !== moduleName);
+    if (el) {
+      const isCurrent = (mod === moduleName);
+      if (isCurrent) {
+        el.classList.add('active');
+        el.classList.remove('hidden');
+      } else {
+        el.classList.remove('active');
+        el.classList.add('hidden');
+      }
+    }
   });
 
-  // Library sidebar tree is visible when in study mode
-  const libSection = $('sidebar-library-section');
-  if (libSection) libSection.hidden = moduleName !== 'study';
+  document.querySelectorAll('.module-nav-btn').forEach(b => {
+    b.classList.toggle('active', b.id === `tab-nav-${moduleName}`);
+  });
+  document.querySelectorAll('.nav-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === moduleName);
+  });
 
   if (moduleName === 'attendance') loadAttendanceHub();
   if (moduleName === 'timetable') loadTimetableDay(0);
   if (moduleName === 'assignments') loadAssignmentsList();
+  if (moduleName === 'grades') loadGpaPredictor();
   if (moduleName === 'analytics') loadAnalyticsData();
   if (moduleName === 'settings') checkSystemAndAuth();
 }
@@ -439,30 +1041,74 @@ document.querySelectorAll('.module-nav-btn').forEach(btn => {
   });
 });
 
+document.querySelectorAll('.nav-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const mod = btn.dataset.view;
+    switchModule(mod);
+  });
+});
+
 // =========================================================
-// 5. ATTENDANCE HUB & BUNK CALCULATOR
+// 5. ATTENDANCE HUB
 // =========================================================
 
 let attendanceList = [];
 
-async function loadAttendanceHub() {
+async function loadAttendanceHub(semesterOverride) {
+  const sem = semesterOverride !== undefined ? semesterOverride : ($('attendance-semester-select')?.value || '');
   try {
-    const res = await fetch('/api/attendance');
+    const url = '/api/attendance' + (sem ? `?semester=${encodeURIComponent(sem)}` : '');
+    const res = await fetch(url);
     const data = await res.json();
     attendanceList = data.records || [];
     renderAttendanceGrid();
-    updateSimulatorDropdown();
   } catch (e) {
     console.error('Attendance fetch error:', e);
   }
 }
 
+$('attendance-semester-select')?.addEventListener('change', () => {
+  loadAttendanceHub($('attendance-semester-select').value);
+});
+
 function renderAttendanceGrid() {
   const grid = $('attendance-cards-grid');
   grid.replaceChildren();
 
+  // Compute overall semester statistics for top banner
+  const totalAttended = attendanceList.reduce((acc, a) => acc + (a.attended || 0), 0);
+  const totalConducted = attendanceList.reduce((acc, a) => acc + (a.conducted || 0), 0);
+  const overallPct = totalConducted > 0 ? (totalAttended / totalConducted * 100).toFixed(1) : '0.0';
+  const safeCount = attendanceList.filter(a => (a.current_percentage >= (a.target_percentage || 75))).length;
+  const dangerCount = attendanceList.length - safeCount;
+
+  if ($('att-overall-percentage')) $('att-overall-percentage').textContent = `${overallPct}%`;
+  if ($('att-total-subjects')) $('att-total-subjects').textContent = String(attendanceList.length);
+  if ($('att-safe-count')) $('att-safe-count').textContent = String(safeCount);
+  if ($('att-danger-count')) $('att-danger-count').textContent = String(dangerCount);
+
+  const badge = $('att-overall-badge');
+  if (badge) {
+    if (dangerCount > 0) {
+      badge.textContent = `${dangerCount} SHORTAGE${dangerCount === 1 ? '' : 'S'}`;
+      badge.className = 'att-status-pill danger';
+    } else {
+      badge.textContent = 'ELIGIBLE';
+      badge.className = 'att-status-pill ok';
+    }
+  }
+
   if (!attendanceList.length) {
-    grid.innerHTML = '<div class="empty">No attendance records. Click "+ Add Subject" or sync from PESU Academy.</div>';
+    grid.innerHTML = `
+      <div class="empty" style="padding: 36px 20px; text-align: center; grid-column: 1 / -1; background: var(--bg-card); border-radius: 12px; border: 1px dashed var(--border);">
+        <p style="margin-bottom: 14px; font-size: 15px; color: var(--text-primary); font-weight: 500;">No attendance records found for this semester.</p>
+        <p class="subtle" style="margin-bottom: 20px; font-size: 13px;">Click "↻ Sync from PESU" to fetch your live courses and attendance, or add subjects manually.</p>
+        <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+          <button class="sync-button" style="width: auto; padding: 9px 18px;" onclick="openModal('modal-login')">Connect PESU Account</button>
+          <button class="action" onclick="openModal('modal-attendance')">+ Add Subject Manually</button>
+        </div>
+      </div>
+    `;
     return;
   }
 
@@ -470,144 +1116,69 @@ function renderAttendanceGrid() {
     const card = document.createElement('div');
     card.className = 'attendance-card glass';
 
-    const canBunk = a.classes_can_bunk;
-    const needed = a.is_impossible_target ? 'Impossible' : a.classes_needed;
-    let advice = '';
+    const isSafe = (a.current_percentage >= (a.target_percentage || 75));
+    const statusClass = isSafe ? 'safe' : 'critical';
+    const statusText = isSafe ? 'SAFE (≥ 75%)' : 'SHORTAGE (< 75%)';
 
-    if (a.current_percentage >= a.target_percentage) {
-      advice = `✓ You can bunk <strong>${canBunk}</strong> more class${canBunk === 1 ? '' : 'es'} safely.`;
-    } else {
-      advice = `⚠ Attend <strong>${needed}</strong> consecutive class${needed === 1 ? '' : 'es'} to reach ${a.target_percentage}%.`;
-    }
+    const canBunk = a.classes_can_bunk;
+    const needed = a.is_impossible_target ? 'Cannot reach 75%' : a.classes_needed;
+    let advice = isSafe
+      ? `✓ Safe to miss <strong>${canBunk}</strong> class${canBunk === 1 ? '' : 'es'}`
+      : `⚠ Need <strong>${needed}</strong> consecutive class${needed === 1 ? '' : 'es'} for 75%`;
 
     card.innerHTML = `
       <div class="att-card-head">
         <div>
-          <span class="att-code">${a.subject_code}</span>
-          <div class="att-title">${a.subject_name}</div>
+          <div class="att-title">${escapeHtml(a.subject_name)}</div>
+          <div class="att-code">${escapeHtml(a.subject_code)}</div>
         </div>
-        <span class="att-badge ${a.status}">${a.status.toUpperCase()}</span>
+        <span class="att-badge ${statusClass}">${statusText}</span>
       </div>
-      <div class="att-stats">
-        <div class="att-pct">${a.current_percentage}%</div>
-        <div class="att-counts">
-          <div>${a.attended} / ${a.conducted} classes</div>
-          <div>Target: ${a.target_percentage}%</div>
-        </div>
+      <div class="att-stats-row">
+        <div class="att-pct-large ${statusClass}">${a.current_percentage}%</div>
+        <div class="att-status-text">${a.attended} classes attended</div>
       </div>
       <div class="att-progress-track">
-        <div class="att-progress-bar ${a.status}" style="width: ${Math.min(100, a.current_percentage)}%"></div>
+        <div class="att-progress-bar ${statusClass}" style="width: ${Math.min(100, a.current_percentage)}%"></div>
       </div>
-      <div class="att-advice">${advice}</div>
+      <div class="att-card-footer">
+        <span>${advice}</span>
+        <button class="action att-del-btn" style="padding: 2px 7px; font-size: 10px;" title="Delete subject">✕</button>
+      </div>
     `;
 
-    card.addEventListener('click', () => {
-      $('sim-subject-select').value = a.subject_code;
-      $('sim-input-attended').value = a.attended;
-      $('sim-input-conducted').value = a.conducted;
-      $('sim-input-target').value = a.target_percentage;
-      runSimulator();
+    card.querySelector('.att-del-btn')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (confirm(`Remove ${a.subject_code} from attendance?`)) {
+        await fetch(`/api/attendance/${encodeURIComponent(a.subject_code)}`, { method: 'DELETE' });
+        await loadAttendanceHub();
+      }
     });
 
     grid.append(card);
   });
 }
 
-function updateSimulatorDropdown() {
-  const select = $('sim-subject-select');
-  if (!select) return;
-  select.replaceChildren(new Option('Custom inputs', ''));
-  attendanceList.forEach(a => select.add(new Option(`${a.subject_code} - ${a.subject_name}`, a.subject_code)));
-
-  select.onchange = () => {
-    const found = attendanceList.find(x => x.subject_code === select.value);
-    if (found) {
-      $('sim-input-attended').value = found.attended;
-      $('sim-input-conducted').value = found.conducted;
-      $('sim-input-target').value = found.target_percentage;
-      runSimulator();
-    }
-  };
-}
-
-document.querySelectorAll('.sim-tab-btn').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.sim-tab-btn').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    const tabName = tab.dataset.simTab;
-    $('sim-body-bunk').classList.toggle('hidden', tabName !== 'bunk');
-    $('sim-body-target').classList.toggle('hidden', tabName !== 'target');
-    $('sim-body-chain').classList.toggle('hidden', tabName !== 'chain');
-    runSimulator();
-  });
-});
-
-['sim-input-attended', 'sim-input-conducted', 'sim-input-target', 'sim-bunk-count'].forEach(id => {
-  $(id)?.addEventListener('input', runSimulator);
-});
-
-async function runSimulator() {
-  const attended = Number($('sim-input-attended').value);
-  const conducted = Number($('sim-input-conducted').value);
-  const target = Number($('sim-input-target').value);
-  const bunkCount = Number($('sim-bunk-count').value);
-
-  const res = await fetch('/api/attendance/simulate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ attended, conducted, target_percentage: target, bunk_count: bunkCount })
-  });
-  const data = await res.json();
-  const a = data.analysis;
-
-  $('sim-bunk-result').innerHTML = `If you bunk <strong>${bunkCount}</strong> classes, attendance will be <strong>${a.current_percentage}%</strong>.`;
-  const neededStr = a.is_impossible_target ? 'Cannot reach 100%' : `${a.classes_needed} classes`;
-  $('sim-target-result').innerHTML = `Attend <strong>${neededStr}</strong> to reach ${target}%. Max bunk: <strong>${a.classes_can_bunk}</strong>.`;
-
-  const matrix = $('sim-matrix-grid');
-  matrix.replaceChildren();
-  (data.bunk_matrix || []).forEach(m => {
-    const cell = document.createElement('div');
-    cell.className = 'matrix-cell';
-    cell.innerHTML = `<span>Miss +${m.miss_count}</span><strong>${m.projected_percentage}%</strong>`;
-    matrix.append(cell);
-  });
-}
-
-$('btn-run-chain')?.addEventListener('click', async () => {
-  const chainStr = $('sim-chain-input').value;
-  const actions = chainStr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-  const attended = Number($('sim-input-attended').value);
-  const conducted = Number($('sim-input-conducted').value);
-
-  const res = await fetch('/api/attendance/simulate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ attended, conducted, chain: actions })
-  });
-  const data = await res.json();
-
-  const out = $('sim-chain-output');
-  out.replaceChildren();
-  (data.results || []).forEach(step => {
-    const row = document.createElement('div');
-    row.style.fontSize = '11px';
-    row.style.padding = '4px 0';
-    row.innerHTML = `Step ${step.step} (${step.action}): <strong>${step.attended}/${step.conducted} (${step.percentage}%)</strong>`;
-    out.append(row);
-  });
-});
-
 $('btn-sync-attendance')?.addEventListener('click', async () => {
   const btn = $('btn-sync-attendance');
+  const semSelect = $('attendance-semester-select');
+  const selectedSem = semSelect?.value || '';
   btn.disabled = true;
   btn.textContent = 'Syncing…';
   try {
-    const res = await fetch('/api/attendance/sync', { method: 'POST' });
+    const res = await fetch('/api/attendance/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ semester: selectedSem || null })
+    });
     const result = await res.json();
+    if (res.status === 401) {
+      openModal('modal-login');
+      throw new Error('Please sign in to PESU Academy first.');
+    }
     if (!res.ok) throw new Error(result.error || 'Sync failed');
-    await loadAttendanceHub();
-    alert('Attendance synced successfully!');
+    await loadAttendanceHub(selectedSem);
+    alert(result.message || 'Attendance synced successfully!');
   } catch (e) {
     alert(`Could not sync attendance: ${e.message}`);
   } finally {
@@ -664,6 +1235,37 @@ document.querySelectorAll('.tt-day-btn').forEach(btn => {
   });
 });
 
+function formatTimetablePeriod(t) {
+  let rawName = (t.subject_name || '').replace(/^ttSubject[_&]*/i, '').trim();
+  let code = (t.subject_code || '').trim();
+  let name = rawName;
+
+  const match = rawName.match(/^([A-Z0-9]{5,12})\s*[-–—:]\s*(.+)$/i);
+  if (match) {
+    code = match[1].trim();
+    name = match[2].trim();
+  }
+
+  // Convert shouting all-caps into clean Title Case
+  if (name.length > 3 && name === name.toUpperCase()) {
+    const minorWords = new Set(["and", "for", "in", "of", "to", "the", "its", "with"]);
+    const acronyms = new Set(["ai", "ml", "os", "dsa", "i", "ii", "iii", "iv"]);
+    name = name.split(/\s+/).map(w => {
+      const lower = w.toLowerCase();
+      if (acronyms.has(lower)) return lower.toUpperCase();
+      if (minorWords.has(lower)) return lower;
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    }).join(' ');
+  }
+
+  const cleanTime = (s) => (s || '').replace(/^(\d{1,2}:\d{2}):\d{2}(\s*[AP]M)?$/i, '$1$2').trim();
+  const st = cleanTime(t.start_time);
+  const et = cleanTime(t.end_time);
+  const timeStr = (st && et) ? `${st} – ${et}` : (st || `Period ${t.period_number}`);
+
+  return { ...t, subject_code: code, subject_name: name, time_display: timeStr };
+}
+
 async function loadTimetableDay(day) {
   const grid = $('timetable-display-grid');
   try {
@@ -672,17 +1274,27 @@ async function loadTimetableDay(day) {
     grid.replaceChildren();
 
     if (!data.timetable || !data.timetable.length) {
-      grid.innerHTML = '<div class="empty">No classes scheduled for this day.</div>';
+      grid.innerHTML = '<div class="empty">No classes scheduled for this day. Click "↻ Sync Timetable from PESU" to load your schedule.</div>';
       return;
     }
 
-    data.timetable.forEach(t => {
+    data.timetable.forEach(rawItem => {
+      const t = formatTimetablePeriod(rawItem);
       const card = document.createElement('div');
-      card.className = 'tt-card';
+      card.className = 'tt-card glass';
       card.innerHTML = `
-        <span class="tt-badge">PERIOD ${t.period_number} ${t.is_lab ? '· LAB' : ''}</span>
-        <div class="tt-title">${t.subject_name}</div>
-        <div class="tt-sub">${t.start_time || 'Period ' + t.period_number} ${t.room ? '· ' + t.room : ''}</div>
+        <div class="tt-card-head">
+          <span class="tt-period-pill">PERIOD ${t.period_number}</span>
+          ${t.is_lab ? '<span class="tt-lab-badge">LAB</span>' : ''}
+        </div>
+        <div class="tt-card-body">
+          <div class="tt-subject-title">${escapeHtml(t.subject_name)}</div>
+          ${t.subject_code ? `<div class="tt-subject-code-sub">${escapeHtml(t.subject_code)}</div>` : ''}
+        </div>
+        <div class="tt-card-footer">
+          <div class="tt-time-chip">⏱ ${escapeHtml(t.time_display)}</div>
+          ${t.room ? `<div class="tt-room-chip">📍 ${escapeHtml(t.room)}</div>` : ''}
+        </div>
       `;
       grid.append(card);
     });
@@ -690,6 +1302,29 @@ async function loadTimetableDay(day) {
     console.error('Timetable error:', e);
   }
 }
+
+$('btn-sync-timetable')?.addEventListener('click', async () => {
+  const btn = $('btn-sync-timetable');
+  btn.disabled = true;
+  btn.textContent = 'Syncing…';
+  try {
+    const res = await fetch('/api/timetable/sync', { method: 'POST' });
+    const data = await res.json();
+    if (res.status === 401) {
+      openModal('modal-login');
+      throw new Error('Please sign in to PESU Academy first.');
+    }
+    if (!res.ok) throw new Error(data.error || 'Could not sync timetable');
+    const day = Number(document.querySelector('.tt-day-btn.active')?.dataset.day || 0);
+    await loadTimetableDay(day);
+    alert(data.message || 'Timetable synced successfully!');
+  } catch (e) {
+    alert(`Timetable sync error: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Sync Timetable from PESU';
+  }
+});
 
 $('btn-add-period')?.addEventListener('click', async () => {
   const name = prompt('Enter Course / Period Name:');
@@ -794,74 +1429,433 @@ $('assignment-form')?.addEventListener('submit', async e => {
 });
 
 // =========================================================
-// 8. GRADES & CIE EVALUATOR
+// 8. GRADES & GPA PREDICTOR (ISA + ESA)
 // =========================================================
 
-function setupGradesSection() {
-  const container = $('sgpa-rows');
-  const addRow = (title = 'Subject', credits = 4, grade = 'S') => {
-    const row = document.createElement('div');
-    row.className = 'sgpa-row';
-    row.innerHTML = `
-      <input class="search-box-input-full sgpa-sub-title" value="${title}">
-      <input type="number" class="custom-input-sm sgpa-sub-cr" value="${credits}" min="1" max="10">
-      <select class="sync-semester sgpa-sub-gr" style="margin:0; padding:6px;">
-        <option value="S" ${grade === 'S' ? 'selected' : ''}>S (10)</option>
-        <option value="A" ${grade === 'A' ? 'selected' : ''}>A (9)</option>
-        <option value="B" ${grade === 'B' ? 'selected' : ''}>B (8)</option>
-        <option value="C" ${grade === 'C' ? 'selected' : ''}>C (7)</option>
-        <option value="D" ${grade === 'D' ? 'selected' : ''}>D (6)</option>
-      </select>
-      <button class="action" style="padding:6px 9px;">✕</button>
-    `;
-    row.querySelector('button').onclick = () => row.remove();
-    container.append(row);
-  };
+let gpaCourseList = [];
 
-  addRow('Operating System', 4, 'S');
-  addRow('Data Structures', 4, 'A');
-  addRow('Mathematics III', 4, 'B');
-
-  $('btn-add-sgpa-row')?.addEventListener('click', () => addRow('New Course', 4, 'A'));
-
-  $('btn-calc-sgpa')?.addEventListener('click', async () => {
-    const rows = container.querySelectorAll('.sgpa-row');
-    const subjects = [];
-    rows.forEach(r => {
-      subjects.push({
-        title: r.querySelector('.sgpa-sub-title').value,
-        credits: Number(r.querySelector('.sgpa-sub-cr').value),
-        grade: r.querySelector('.sgpa-sub-gr').value
-      });
-    });
-    const res = await fetch('/api/grades/calculate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subjects })
-    });
+async function loadGpaPredictor(semesterOverride) {
+  const sem = semesterOverride !== undefined ? semesterOverride : ($('gpa-semester-select')?.value || '');
+  const container = $('gpa-subjects-container');
+  if (!container) return;
+  try {
+    const url = '/api/grades/isa' + (sem ? `?semester=${encodeURIComponent(sem)}` : '');
+    const res = await fetch(url);
     const data = await res.json();
-    $('sgpa-score-box').textContent = `Estimated SGPA: ${data.sgpa ?? '—'}`;
-  });
+    gpaCourseList = (data.marks && data.marks.length) ? data.marks : [];
 
-  $('cie-form')?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const payload = {
-      isa1: Number($('cie-isa1').value),
-      isa2: Number($('cie-isa2').value),
-      assignment: Number($('cie-asg').value),
-      project_or_lab: Number($('cie-lab').value)
-    };
-    const res = await fetch('/api/grades/internals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const result = await res.json();
-    $('cie-result-box').textContent = `CIE Score: ${result.total_obtained} / ${result.max_marks} (${result.percentage}%) · ${result.status}`;
-  });
+    // Fallback courses if no records exist yet
+    if (!gpaCourseList.length) {
+      gpaCourseList = [
+        { subject_code: 'UE25CS252A', subject_name: 'Data Structures and its Applications', credits: 4, isa1_score: 32, isa2_score: 35, assignment_score: 9, target_grade: 'S' },
+        { subject_code: 'UE25CS242A', subject_name: 'Operating Systems', credits: 4, isa1_score: 30, isa2_score: 31, assignment_score: 8.5, target_grade: 'A' },
+        { subject_code: 'UE25MA251A', subject_name: 'Mathematics III', credits: 4, isa1_score: 28, isa2_score: 33, assignment_score: 8, target_grade: 'A' }
+      ];
+    }
+    renderGpaCourseRows();
+  } catch (e) {
+    console.error('Failed to load GPA predictor:', e);
+  }
 }
 
-setupGradesSection();
+function isCieSubject(name, code, isa1Max) {
+  const n = String(name || '').toUpperCase();
+  const c = String(code || '').toUpperCase();
+  return c.startsWith('UZ') || /\bCIE\b/i.test(c) || /\bCIE\b/i.test(n) || n.includes('INNOVATION') || Number(isa1Max) === 45;
+}
+
+function calcRowCie(isa1, isa1Max, isa2, isa2Max, asg, asgMax) {
+  // PESU Scheme: ISA 1 and ISA 2 contribute 22.5 marks each = 45 marks total.
+  // Assignment/Lab contributes up to 5 marks. Total CIE = 50 marks.
+  const m1 = Number(isa1Max) > 0 ? Number(isa1Max) : 40.0;
+  const m2 = Number(isa2Max) > 0 ? Number(isa2Max) : m1;
+  const ma = Number(asgMax) > 0 ? Number(asgMax) : 10.0;
+
+  const s1 = (isa1 !== null && isa1 !== undefined && String(isa1).trim() !== '') ? Number(isa1) : 0;
+  const s2 = (isa2 !== null && isa2 !== undefined && String(isa2).trim() !== '') ? Number(isa2) : 0;
+  const sa = (asg !== null && asg !== undefined && String(asg).trim() !== '') ? Number(asg) : 0;
+
+  const c1 = (Math.max(0, Math.min(m1, s1)) / m1) * 22.5;
+  const c2 = (Math.max(0, Math.min(m2, s2)) / m2) * 22.5;
+  const isaContrib = Math.min(45, c1 + c2);
+
+  // Assignment / Lab contributes up to 5 marks
+  const asgContrib = Math.min(5, (Math.max(0, Math.min(ma, sa)) / ma) * 5.0);
+
+  return Math.min(50, Math.round((isaContrib + asgContrib) * 10) / 10);
+}
+
+function getGradeInfo(total) {
+  if (total >= 90) return { grade: 'S', points: 10, cls: 'grade-s' };
+  if (total >= 80) return { grade: 'A', points: 9, cls: 'grade-a' };
+  if (total >= 70) return { grade: 'B', points: 8, cls: 'grade-b' };
+  if (total >= 60) return { grade: 'C', points: 7, cls: 'grade-c' };
+  if (total >= 50) return { grade: 'D', points: 6, cls: 'grade-d' };
+  if (total >= 40) return { grade: 'E', points: 5, cls: 'grade-e' };
+  return { grade: 'F', points: 0, cls: 'grade-f' };
+}
+
+function renderGpaCourseRows() {
+  const container = $('gpa-subjects-container');
+  if (!container) return;
+  container.replaceChildren();
+
+  if (!gpaCourseList.length) {
+    container.innerHTML = '<div class="empty">No courses in predictor. Click "+ Add Course" or "Fetch Marks from PESU".</div>';
+    recalcGrandGpa();
+    return;
+  }
+
+  gpaCourseList.forEach((course, index) => {
+    const card = document.createElement('div');
+    card.className = 'gpa-card attendance-card';
+    card.dataset.index = index;
+
+    const isCie = isCieSubject(course.subject_name, course.subject_code, course.isa1_max);
+    const isa1Max = Number(course.isa1_max) > 0 ? Number(course.isa1_max) : (isCie ? 45.0 : 40.0);
+    const isa2Max = Number(course.isa2_max) > 0 ? Number(course.isa2_max) : isa1Max;
+    const asgMax = Number(course.assignment_max) > 0 ? Number(course.assignment_max) : 10.0;
+    const esaMax = isCie ? 50.0 : 100.0;
+
+    card.dataset.isCie = isCie ? '1' : '0';
+    card.dataset.isa1Max = isa1Max;
+    card.dataset.isa2Max = isa2Max;
+    card.dataset.asgMax = asgMax;
+    card.dataset.esaMax = esaMax;
+
+    // ISA 1 default
+    const rawIsa1 = (course.isa1_score !== null && course.isa1_score !== undefined && String(course.isa1_score).trim() !== '') ? Number(course.isa1_score) : 30;
+    const isa1Val = Math.min(isa1Max, Math.max(0, rawIsa1));
+
+    // ISA 2 default (if conducted use score, else default to ISA 1 score or 30)
+    const rawIsa2 = (course.isa2_score !== null && course.isa2_score !== undefined && String(course.isa2_score).trim() !== '') ? Number(course.isa2_score) : (course.isa1_score ? Number(course.isa1_score) : 30);
+    const isa2Val = Math.min(isa2Max, Math.max(0, rawIsa2));
+
+    // Assignment default (out of 10, default 9.0)
+    const rawAsg = (course.assignment_score !== null && course.assignment_score !== undefined && String(course.assignment_score).trim() !== '') ? Number(course.assignment_score) : 9.0;
+    const asgVal = Math.min(asgMax, Math.max(0, rawAsg));
+
+    // ESA Exam default (80 out of 100 for regular, 40 out of 50 for CIE)
+    const rawEsa = (course.expected_esa !== null && course.expected_esa !== undefined && String(course.expected_esa).trim() !== '') ? Number(course.expected_esa) : (isCie ? 40 : 80);
+    const esaVal = Math.min(esaMax, Math.max(0, rawEsa));
+
+    const credits = Number(course.credits) || 4;
+
+    card.innerHTML = `
+      <div class="gpa-card-head">
+        <div style="flex: 1; min-width: 0;">
+          <input class="gpa-card-title-input row-name" value="${escapeHtml(course.subject_name || 'Subject')}" placeholder="Course Title">
+          <div class="att-code row-code">${escapeHtml(course.subject_code || '')}</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <select class="row-cr gpa-cr-select" title="Course Credits">
+            <option value="1" ${credits === 1 ? 'selected' : ''}>1 Cr</option>
+            <option value="2" ${credits === 2 ? 'selected' : ''}>2 Cr</option>
+            <option value="3" ${credits === 3 ? 'selected' : ''}>3 Cr</option>
+            <option value="4" ${credits === 4 ? 'selected' : ''}>4 Cr</option>
+            <option value="5" ${credits === 5 ? 'selected' : ''}>5 Cr</option>
+            <option value="6" ${credits === 6 ? 'selected' : ''}>6 Cr</option>
+          </select>
+          <div class="gpa-card-grade-badge row-badge grade-s">
+            <span class="gpa-grade-letter">S</span>
+            <span class="gpa-grade-points">10.0 GP</span>
+          </div>
+          <button class="action row-del-btn" title="Remove course" style="padding: 4px 8px; font-size: 11px;">✕</button>
+        </div>
+      </div>
+
+      <div class="gpa-card-body">
+        <!-- ISA 1 Group -->
+        <div class="gpa-control-group">
+          <div class="gpa-control-header">
+            <span class="gpa-control-label">ISA 1</span>
+            <div class="gpa-control-input-wrap">
+              <input type="number" step="0.5" class="gpa-inline-input row-isa1" value="${isa1Val}" min="0" max="${isa1Max}">
+              <span class="gpa-inline-denom">/ ${isa1Max}</span>
+              <span class="gpa-weight-tag row-isa1-contrib">0.0 / 22.5</span>
+            </div>
+          </div>
+          <input type="range" class="gpa-range-slider row-isa1-slider" min="0" max="${isa1Max}" step="0.5" value="${isa1Val}">
+        </div>
+
+        <!-- ISA 2 Group -->
+        <div class="gpa-control-group">
+          <div class="gpa-control-header">
+            <span class="gpa-control-label">ISA 2</span>
+            <div class="gpa-control-input-wrap">
+              <input type="number" step="0.5" class="gpa-inline-input row-isa2" value="${isa2Val}" min="0" max="${isa2Max}">
+              <span class="gpa-inline-denom">/ ${isa2Max}</span>
+              <span class="gpa-weight-tag row-isa2-contrib">0.0 / 22.5</span>
+            </div>
+          </div>
+          <input type="range" class="gpa-range-slider row-isa2-slider" min="0" max="${isa2Max}" step="0.5" value="${isa2Val}">
+        </div>
+
+        <!-- Assignment / Lab Group (numeric input as requested) -->
+        <div class="gpa-control-group">
+          <div class="gpa-control-header">
+            <span class="gpa-control-label">Assignment / Lab</span>
+            <div class="gpa-control-input-wrap">
+              <input type="number" step="0.5" class="gpa-inline-input row-asg" value="${asgVal}" min="0" max="${asgMax}">
+              <span class="gpa-inline-denom">/ ${asgMax}</span>
+              <span class="gpa-weight-tag row-asg-contrib">0.0 / 5.0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ESA Exam Group -->
+        <div class="gpa-control-group esa-group">
+          <div class="gpa-control-header">
+            <span class="gpa-control-label">ESA Exam (${isCie ? 'CIE · Max 50' : 'Regular · Max 100 · 50% Wt'})</span>
+            <div class="gpa-control-input-wrap">
+              <input type="number" step="1" class="gpa-inline-input row-esa" value="${esaVal}" min="0" max="${esaMax}">
+              <span class="gpa-inline-denom">/ ${esaMax}</span>
+              <span class="gpa-weight-tag esa-tag row-esa-contrib">0.0 / 50</span>
+            </div>
+          </div>
+          <input type="range" class="gpa-range-slider row-esa-slider" min="0" max="${esaMax}" step="1" value="${esaVal}">
+        </div>
+      </div>
+
+      <div class="att-progress-track">
+        <div class="att-progress-bar row-progress-bar safe" style="width: 85%;"></div>
+      </div>
+
+      <div class="gpa-card-footer">
+        <span>CIE: <strong class="row-cie-val">0.0</strong> / 50</span>
+        <span>ESA Contrib: <strong class="row-esa-val">0.0</strong> / 50</span>
+        <span>Total: <strong class="row-total-val">0.0</strong> / 100</span>
+      </div>
+    `;
+
+    // Hook up two-way syncing and calculations
+    const isa1Num = card.querySelector('.row-isa1');
+    const isa1Slider = card.querySelector('.row-isa1-slider');
+    const isa2Num = card.querySelector('.row-isa2');
+    const isa2Slider = card.querySelector('.row-isa2-slider');
+    const asgNum = card.querySelector('.row-asg');
+    const esaNum = card.querySelector('.row-esa');
+    const esaSlider = card.querySelector('.row-esa-slider');
+    const crSelect = card.querySelector('.row-cr');
+    const nameInput = card.querySelector('.row-name');
+
+    // ISA 1 sync
+    isa1Slider.addEventListener('input', () => {
+      isa1Num.value = isa1Slider.value;
+      updateRowCalculations(card);
+    });
+    isa1Num.addEventListener('input', () => {
+      isa1Slider.value = isa1Num.value || '0';
+      updateRowCalculations(card);
+    });
+
+    // ISA 2 sync
+    isa2Slider.addEventListener('input', () => {
+      isa2Num.value = isa2Slider.value;
+      updateRowCalculations(card);
+    });
+    isa2Num.addEventListener('input', () => {
+      isa2Slider.value = isa2Num.value || '0';
+      updateRowCalculations(card);
+    });
+
+    // Assignment
+    asgNum.addEventListener('input', () => {
+      updateRowCalculations(card);
+    });
+
+    // ESA sync
+    esaSlider.addEventListener('input', () => {
+      esaNum.value = esaSlider.value;
+      updateRowCalculations(card);
+    });
+    esaNum.addEventListener('input', () => {
+      esaSlider.value = esaNum.value || '0';
+      updateRowCalculations(card);
+    });
+
+    // Credits & Name change
+    crSelect.addEventListener('change', () => recalcGrandGpa());
+    nameInput.addEventListener('input', () => updateRowCalculations(card));
+
+    // Delete
+    card.querySelector('.row-del-btn').addEventListener('click', () => {
+      card.remove();
+      recalcGrandGpa();
+    });
+
+    container.append(card);
+    updateRowCalculations(card, false);
+  });
+
+  recalcGrandGpa();
+}
+
+function updateRowCalculations(card, triggerGrand = true) {
+  const isCie = card.dataset.isCie === '1' || isCieSubject(card.querySelector('.row-name')?.value, card.querySelector('.row-code')?.textContent, card.dataset.isa1Max);
+  const isa1Max = Number(card.dataset.isa1Max) || (isCie ? 45.0 : 40.0);
+  const isa2Max = Number(card.dataset.isa2Max) || isa1Max;
+  const asgMax = Number(card.dataset.asgMax) || 10.0;
+  const esaMax = isCie ? 50.0 : 100.0;
+
+  card.dataset.isCie = isCie ? '1' : '0';
+  card.dataset.isa1Max = isa1Max;
+  card.dataset.isa2Max = isa2Max;
+  card.dataset.asgMax = asgMax;
+  card.dataset.esaMax = esaMax;
+
+  const s1 = Math.max(0, Math.min(isa1Max, Number(card.querySelector('.row-isa1').value) || 0));
+  const s2 = Math.max(0, Math.min(isa2Max, Number(card.querySelector('.row-isa2').value) || 0));
+  const sa = Math.max(0, Math.min(asgMax, Number(card.querySelector('.row-asg').value) || 0));
+  const se = Math.max(0, Math.min(esaMax, Number(card.querySelector('.row-esa').value) || 0));
+
+  const c1 = Math.round(((s1 / isa1Max) * 22.5) * 10) / 10;
+  const c2 = Math.round(((s2 / isa2Max) * 22.5) * 10) / 10;
+  const ca = Math.round(((sa / asgMax) * 5.0) * 10) / 10;
+  const cie = Math.min(50, Math.round((c1 + c2 + ca) * 10) / 10);
+
+  // Update contribution tags
+  const c1Tag = card.querySelector('.row-isa1-contrib');
+  if (c1Tag) c1Tag.textContent = `${c1.toFixed(1)} / 22.5`;
+  const c2Tag = card.querySelector('.row-isa2-contrib');
+  if (c2Tag) c2Tag.textContent = `${c2.toFixed(1)} / 22.5`;
+  const caTag = card.querySelector('.row-asg-contrib');
+  if (caTag) caTag.textContent = `${ca.toFixed(1)} / 5.0`;
+
+  // ESA contribution: For regular courses, 50% weightage (se * 0.5). For CIE courses, se.
+  const esaContrib = isCie ? Math.round(se * 10) / 10 : Math.round((se * 0.5) * 10) / 10;
+  const esaTag = card.querySelector('.row-esa-contrib');
+  if (esaTag) esaTag.textContent = `${esaContrib.toFixed(1)} / 50`;
+
+  const total = Math.min(100, Math.max(0, Math.round((cie + esaContrib) * 10) / 10));
+  const info = getGradeInfo(total);
+
+  // Update footer
+  const cieValEl = card.querySelector('.row-cie-val');
+  if (cieValEl) cieValEl.textContent = cie.toFixed(1);
+  const esaValEl = card.querySelector('.row-esa-val');
+  if (esaValEl) esaValEl.textContent = esaContrib.toFixed(1);
+  const totalValEl = card.querySelector('.row-total-val');
+  if (totalValEl) totalValEl.textContent = total.toFixed(1);
+
+  // Update grade badge
+  const badge = card.querySelector('.row-badge');
+  if (badge) {
+    badge.className = `gpa-card-grade-badge row-badge ${info.cls}`;
+    const letterEl = badge.querySelector('.gpa-grade-letter');
+    if (letterEl) letterEl.textContent = info.grade;
+    const ptsEl = badge.querySelector('.gpa-grade-points');
+    if (ptsEl) ptsEl.textContent = `${info.points.toFixed(1)} GP`;
+    badge.dataset.grade = info.grade;
+    badge.dataset.points = String(info.points);
+  }
+
+  // Update progress bar
+  const pBar = card.querySelector('.row-progress-bar');
+  if (pBar) {
+    pBar.style.width = `${Math.min(100, total)}%`;
+    if (total >= 70) {
+      pBar.className = 'att-progress-bar row-progress-bar safe';
+    } else if (total >= 50) {
+      pBar.className = 'att-progress-bar row-progress-bar warning';
+    } else {
+      pBar.className = 'att-progress-bar row-progress-bar critical';
+    }
+  }
+
+  if (triggerGrand) {
+    recalcGrandGpa();
+  }
+}
+
+function recalcGrandGpa() {
+  const container = $('gpa-subjects-container');
+  if (!container) return;
+  const cards = container.querySelectorAll('.gpa-card');
+  let totalCredits = 0;
+  let weightedPoints = 0;
+
+  cards.forEach(c => {
+    const cr = Number(c.querySelector('.row-cr')?.value) || 4;
+    const badge = c.querySelector('.row-badge');
+    const pts = (badge?.dataset.points !== undefined && badge?.dataset.points !== '') ? Number(badge.dataset.points) : getGradeInfo(Number(c.querySelector('.row-total-val')?.textContent) || 0).points;
+    totalCredits += cr;
+    weightedPoints += (cr * pts);
+  });
+
+  const sgpa = totalCredits > 0 ? (weightedPoints / totalCredits).toFixed(2) : '0.00';
+  if ($('gpa-grand-score')) $('gpa-grand-score').textContent = sgpa;
+  if ($('gpa-total-credits')) $('gpa-total-credits').textContent = String(totalCredits);
+
+  if ($('gpa-insight-text')) {
+    if (totalCredits === 0) {
+      $('gpa-insight-text').textContent = 'Add courses to calculate predicted SGPA.';
+    } else {
+      const numSgpa = Number(sgpa);
+      let insight = '';
+      if (numSgpa >= 9.0) insight = 'Outstanding! Projected Distinction with top honors.';
+      else if (numSgpa >= 8.0) insight = 'Great performance! Solid First Class with Distinction.';
+      else if (numSgpa >= 7.0) insight = 'Good standing! Consistent First Class performance.';
+      else insight = 'Focus on high-weightage ESA subjects to boost your SGPA.';
+      $('gpa-insight-text').textContent = `${insight} (${weightedPoints.toFixed(1)} grade points over ${totalCredits} credits).`;
+    }
+  }
+}
+
+// Wire up GPA section controls
+$('btn-fetch-isa-marks')?.addEventListener('click', async () => {
+  const btn = $('btn-fetch-isa-marks');
+  const semSelect = $('gpa-semester-select');
+  const selectedSem = semSelect?.value || '';
+  btn.disabled = true;
+  btn.textContent = 'Fetching…';
+  try {
+    const res = await fetch('/api/grades/isa/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ semester: selectedSem || null })
+    });
+    const data = await res.json();
+    if (res.status === 401) {
+      openModal('modal-login');
+      throw new Error('Please sign in to PESU Academy first.');
+    }
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch marks');
+    alert(data.message || 'ISA marks fetched successfully!');
+    await loadGpaPredictor(selectedSem);
+  } catch (e) {
+    alert(`Could not fetch ISA marks: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Fetch Marks from PESU';
+  }
+});
+
+$('btn-add-gpa-course')?.addEventListener('click', () => {
+  const container = $('gpa-subjects-container');
+  if (!container) return;
+  if (container.querySelector('.empty')) container.replaceChildren();
+
+  const newCourse = {
+    subject_code: '',
+    subject_name: 'New Course',
+    credits: 4,
+    isa1_score: 30,
+    isa1_max: 40.0,
+    isa2_score: 30,
+    isa2_max: 40.0,
+    assignment_score: 8,
+    assignment_max: 10.0,
+    target_grade: 'A',
+    expected_esa: ''
+  };
+  gpaCourseList.push(newCourse);
+  renderGpaCourseRows();
+});
+
+$('gpa-semester-select')?.addEventListener('change', () => {
+  loadGpaPredictor($('gpa-semester-select').value);
+});
 
 // =========================================================
 // 9. STUDY ANALYTICS
@@ -896,8 +1890,56 @@ async function loadAnalyticsData() {
 }
 
 // =========================================================
-// 10. SETTINGS & SYSTEM STATUS
+// 10. SETTINGS & SYSTEM STATUS & THEMES
 // =========================================================
+
+const THEME_NAMES = {
+  slate: 'Midnight Slate',
+  onyx: 'Onyx Black',
+  emerald: 'Nordic Forest',
+  amber: 'Warm Amber',
+  iris: 'Classic Iris'
+};
+
+function applyTheme(themeId) {
+  const validTheme = THEME_NAMES[themeId] ? themeId : 'slate';
+  document.documentElement.setAttribute('data-theme', validTheme);
+  try { localStorage.setItem('betterpesu-theme', validTheme); } catch (_) {}
+  document.querySelectorAll('.theme-tile').forEach(t => {
+    t.classList.toggle('active', t.dataset.themeId === validTheme);
+  });
+  const nameEl = $('current-theme-name');
+  if (nameEl) nameEl.textContent = THEME_NAMES[validTheme];
+}
+
+function applyGlow(enabled) {
+  document.body.classList.toggle('no-glow', !enabled);
+  try { localStorage.setItem('betterpesu-glow', enabled ? 'true' : 'false'); } catch (_) {}
+  const glowToggle = $('toggle-ambient-glow');
+  if (glowToggle) glowToggle.checked = enabled;
+}
+
+// Attach theme events
+document.querySelectorAll('.theme-tile').forEach(tile => {
+  tile.addEventListener('click', () => {
+    applyTheme(tile.dataset.themeId);
+  });
+});
+
+$('toggle-ambient-glow')?.addEventListener('change', e => {
+  applyGlow(e.target.checked);
+});
+
+// Initialize theme immediately
+try {
+  const savedTheme = localStorage.getItem('betterpesu-theme') || 'slate';
+  applyTheme(savedTheme);
+  const savedGlow = localStorage.getItem('betterpesu-glow');
+  applyGlow(savedGlow !== 'false');
+} catch (_) {
+  applyTheme('slate');
+  applyGlow(true);
+}
 
 async function checkSystemAndAuth() {
   try {
@@ -920,21 +1962,146 @@ async function checkSystemAndAuth() {
     const profCard = $('settings-profile-card');
     const loginBtn = $('btn-login-modal');
     const logoutBtn = $('btn-logout');
+    const globalLoginBtn = $('btn-global-login');
+    const userBadge = $('nav-user-badge');
+    const userNameSpan = $('nav-user-name');
+    const sideAuthBtn = $('sidebar-auth-btn');
+    const authBadge = $('settings-auth-status-badge');
 
     if (authData.profile?.name) {
       const p = authData.profile;
+      if (authBadge) {
+        authBadge.textContent = 'Connected';
+        authBadge.style.color = '#34d399';
+        authBadge.style.borderColor = 'rgba(52, 211, 153, 0.3)';
+        authBadge.style.background = 'rgba(52, 211, 153, 0.15)';
+      }
       $('sidebar-student-name').textContent = p.name;
+      if (userNameSpan) userNameSpan.textContent = p.name.split(' ')[0] || p.name;
+      if (userBadge) userBadge.classList.remove('hidden');
+      if (globalLoginBtn) globalLoginBtn.classList.add('hidden');
+      if (sideAuthBtn) {
+        sideAuthBtn.textContent = 'Log Out';
+        sideAuthBtn.onclick = doLogout;
+      }
+
+      const cleanSrn = (p.srn || '').replace(/^(?:SRN\s*:\s*|Roll\s*:\s*)/i, '').trim() || '–';
+      const cleanSemester = (p.semester && p.semester !== '–' && p.semester !== '-') ? p.semester : 'Sem-3';
+      const cleanBranch = (p.branch && p.branch !== '–' && p.branch !== 'Engineering') ? p.branch : 'Computer Science and Engineering';
+      const cleanCampus = (p.campus && p.campus !== 'PES University') ? p.campus : 'PES University (Ring Road)';
+      const hasPrn = !!(p.prn && p.prn.trim());
+
       profCard.innerHTML = `
-        <div style="font-size:13px; line-height:1.6;">
-          <strong>${p.name}</strong> (${p.srn || 'PESU Student'})<br>
-          <span class="subtle">${p.branch || ''} · ${p.semester || ''} · ${p.campus || ''}</span>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div id="profile-name-text" style="font-size: 15px; font-weight: 700; color: var(--text-main);">${escapeHtml(p.name)}</div>
+            <button class="action" id="btn-edit-name" style="padding: 1px 7px; font-size: 10px;" title="Edit display name">Edit Name</button>
+          </div>
+          <span class="badge-safe">Active Session</span>
+        </div>
+        <div class="profile-card-grid">
+          <div class="profile-meta-item">
+            <span class="profile-meta-label">SRN / Roll</span>
+            <span class="profile-meta-val">${escapeHtml(cleanSrn)}</span>
+          </div>
+          <div class="profile-meta-item">
+            <span class="profile-meta-label">PRN</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="profile-meta-val" id="profile-prn-display" style="${hasPrn ? '' : 'color: var(--text-dim);'}">${escapeHtml(hasPrn ? p.prn : 'Not Set')}</span>
+              <button class="action" id="btn-toggle-prn-input" style="padding: 1px 7px; font-size: 10px;">${hasPrn ? 'Edit' : '+ Add'}</button>
+            </div>
+            <div id="profile-prn-edit-row" class="hidden" style="display: flex; gap: 6px; margin-top: 5px;">
+              <input type="text" id="profile-prn-input" placeholder="e.g. PES1202300468" value="${escapeHtml(p.prn || '')}" style="padding: 3px 6px; font-size: 12px; width: 130px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 4px; color: var(--text-main);">
+              <button class="sync-button" id="btn-save-prn" style="padding: 3px 8px; font-size: 11px;">Save</button>
+            </div>
+          </div>
+          <div class="profile-meta-item">
+            <span class="profile-meta-label">Program & Branch</span>
+            <span class="profile-meta-val">${escapeHtml(cleanBranch)}</span>
+          </div>
+          <div class="profile-meta-item">
+            <span class="profile-meta-label">Current Semester</span>
+            <span class="profile-meta-val">${escapeHtml(cleanSemester)}</span>
+          </div>
+          <div class="profile-meta-item">
+            <span class="profile-meta-label">Campus</span>
+            <span class="profile-meta-val">${escapeHtml(cleanCampus)}</span>
+          </div>
         </div>
       `;
+
+      // PRN edit toggle & save
+      const prnToggleBtn = $('btn-toggle-prn-input');
+      const prnEditRow = $('profile-prn-edit-row');
+      const prnInput = $('profile-prn-input');
+      const prnSaveBtn = $('btn-save-prn');
+
+      prnToggleBtn?.addEventListener('click', () => {
+        prnEditRow?.classList.toggle('hidden');
+        if (prnEditRow && !prnEditRow.classList.contains('hidden')) {
+          prnInput?.focus();
+        }
+      });
+
+      const savePrnFn = async () => {
+        const val = prnInput?.value.trim() || '';
+        try {
+          const res = await fetch('/api/auth/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prn: val })
+          });
+          if (res.ok) {
+            checkAuth();
+          }
+        } catch (e) {
+          console.error('Failed to save PRN:', e);
+        }
+      };
+
+      prnSaveBtn?.addEventListener('click', savePrnFn);
+      prnInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') savePrnFn();
+      });
+
+      // Name edit toggle & save
+      $('btn-edit-name')?.addEventListener('click', async () => {
+        const newName = prompt('Enter your student display name:', p.name);
+        if (newName && newName.trim() && newName.trim() !== p.name) {
+          try {
+            await fetch('/api/auth/profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: newName.trim() })
+            });
+            checkAuth();
+          } catch (e) {
+            console.error('Failed to update name:', e);
+          }
+        }
+      });
       loginBtn.classList.add('hidden');
       logoutBtn.classList.remove('hidden');
     } else {
+      if (authBadge) {
+        authBadge.textContent = 'Not Connected';
+        authBadge.style.color = '#f87171';
+        authBadge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+        authBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+      }
       $('sidebar-student-name').textContent = 'PESU Student';
-      profCard.innerHTML = `<p class="subtle">Sign in to automatically sync your slides and attendance.</p>`;
+      if (userBadge) userBadge.classList.add('hidden');
+      if (globalLoginBtn) globalLoginBtn.classList.remove('hidden');
+      if (sideAuthBtn) {
+        sideAuthBtn.textContent = 'Connect';
+        sideAuthBtn.onclick = () => openModal('modal-login');
+      }
+      profCard.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="font-weight:600; color:var(--text-main);">No Account Connected</div>
+          <p class="subtle" style="margin:0;">Connect your student account to sync semester slides, view attendance history, timetable, and CIE/ISA marks directly.</p>
+        </div>
+      `;
       loginBtn.classList.remove('hidden');
       logoutBtn.classList.add('hidden');
     }
@@ -942,6 +2109,29 @@ async function checkSystemAndAuth() {
     console.error('Settings check error:', e);
   }
 }
+
+$('btn-sync-all-settings')?.addEventListener('click', async () => {
+  const btn = $('btn-sync-all-settings');
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '↻ Syncing All Academic Data…';
+  try {
+    await Promise.allSettled([
+      fetch('/api/attendance/sync', { method: 'POST' }),
+      fetch('/api/timetable/sync', { method: 'POST' }),
+      fetch('/api/grades/isa/sync', { method: 'POST' })
+    ]);
+    await loadAttendanceHub();
+    await loadTimetableDay(activeTimetableDay);
+    await loadGpaPredictor();
+    alert('Academic sync complete! Attendance, timetable, and marks are refreshed.');
+  } catch (err) {
+    alert('Sync error: ' + (err.message || 'Failed'));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
+});
 
 $('btn-open-folder')?.addEventListener('click', () => {
   if (window.pywebview?.api?.open_slides_folder) {
@@ -951,14 +2141,38 @@ $('btn-open-folder')?.addEventListener('click', () => {
   }
 });
 
-$('btn-login-modal')?.addEventListener('click', () => openModal('modal-login'));
-
-$('btn-logout')?.addEventListener('click', async () => {
-  if (confirm('Log out and clear session cookies?')) {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    checkSystemAndAuth();
+$('btn-merge-all-units')?.addEventListener('click', async () => {
+  const btn = $('btn-merge-all-units');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Combining…';
+  try {
+    const res = await fetch('/api/slides/merge-units', { method: 'POST' });
+    const data = await res.json();
+    alert(data.message || 'Successfully combined unit PDFs!');
+    await loadCourses();
+  } catch (err) {
+    console.error('Failed to merge unit PDFs:', err);
+    alert('Error combining unit PDFs: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
   }
 });
+
+async function doLogout() {
+  if (confirm('Log out and clear session cookies?')) {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    await checkSystemAndAuth();
+    await updateSemesterOptions();
+    await loadAttendanceHub();
+  }
+}
+
+$('btn-global-login')?.addEventListener('click', () => openModal('modal-login'));
+$('btn-quick-logout')?.addEventListener('click', doLogout);
+$('btn-login-modal')?.addEventListener('click', () => openModal('modal-login'));
+$('btn-logout')?.addEventListener('click', doLogout);
 
 $('form-login')?.addEventListener('submit', async e => {
   e.preventDefault();
@@ -980,9 +2194,17 @@ $('form-login')?.addEventListener('submit', async e => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Login failed');
     closeModal('modal-login');
-    checkSystemAndAuth();
-    updateSemesterOptions();
-    alert('Logged in successfully!');
+    await checkSystemAndAuth();
+    await updateSemesterOptions();
+    try {
+      await fetch('/api/attendance/sync', { method: 'POST' });
+      await fetch('/api/timetable/sync', { method: 'POST' });
+      await fetch('/api/grades/isa/sync', { method: 'POST' });
+      await loadAttendanceHub();
+      await loadTimetableDay(0);
+      await loadGpaPredictor();
+    } catch (_) {}
+    alert('Logged in successfully! Your profile, timetable, and attendance are connected.');
   } catch (err) {
     errBox.textContent = err.message;
     errBox.classList.remove('hidden');
@@ -1007,18 +2229,58 @@ async function updateSemesterOptions() {
   const previous = syncSemester.value;
   syncSemester.disabled = true;
   syncSemester.replaceChildren(new Option('Loading semesters…', ''));
+  const attSelect = $('attendance-semester-select');
+  const gpaSelect = $('gpa-semester-select');
+
   try {
     const response = await fetch('/api/semesters', { cache: 'no-store' });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Semester discovery failed');
+
+    // 1. Sync dropdown
     syncSemester.replaceChildren(new Option('All semesters', ''));
     for (const semester of result.semesters) {
       syncSemester.add(new Option(semester, semester));
     }
-    if ([...syncSemester.options].some(option => option.value === previous)) {
+    if (previous && [...syncSemester.options].some(option => option.value === previous)) {
       syncSemester.value = previous;
+    } else if (result.semesters.length > 0) {
+      // Default to student's current/latest active semester
+      syncSemester.value = result.semesters[result.semesters.length - 1];
     }
     syncSemester.disabled = lastSyncRunning;
+
+    // 2. Attendance semester dropdown
+    if (attSelect) {
+      const prevAtt = attSelect.value;
+      attSelect.replaceChildren(new Option('All Semesters', ''));
+      for (const sem of result.semesters) {
+        attSelect.add(new Option(sem, sem));
+      }
+      if (prevAtt && [...attSelect.options].some(opt => opt.value === prevAtt)) {
+        attSelect.value = prevAtt;
+      } else if (result.semesters.length > 0) {
+        // Automatically default to student's latest active semester (e.g. Sem-3)
+        attSelect.value = result.semesters[result.semesters.length - 1];
+        loadAttendanceHub(attSelect.value);
+      }
+    }
+
+    // 3. GPA semester dropdown
+    if (gpaSelect) {
+      const prevGpa = gpaSelect.value;
+      gpaSelect.replaceChildren();
+      for (const sem of result.semesters) {
+        gpaSelect.add(new Option(sem, sem));
+      }
+      if (prevGpa && [...gpaSelect.options].some(opt => opt.value === prevGpa)) {
+        gpaSelect.value = prevGpa;
+      } else if (result.semesters.length > 0) {
+        // Automatically default to student's latest active semester (e.g. Sem-3)
+        gpaSelect.value = result.semesters[result.semesters.length - 1];
+        loadGpaPredictor(gpaSelect.value);
+      }
+    }
   } catch (error) {
     syncSemester.replaceChildren(new Option('All semesters', ''));
     syncSemester.disabled = false;
@@ -1134,6 +2396,10 @@ syncButton.addEventListener('click', async () => {
       body: JSON.stringify({ semester: syncSemester.value || null })
     });
     const data = await response.json();
+    if (response.status === 401) {
+      openModal('modal-login');
+      throw new Error('Please connect your PESU Academy account to sync materials.');
+    }
     if (!response.ok) throw new Error(data.error || 'Could not start sync');
     lastSyncRunning = true;
     startSyncPolling();
@@ -1161,6 +2427,3 @@ fetch('/api/courses')
   .catch(console.error);
 
 checkSystemAndAuth();
-
-function openModal(id) { $(id)?.classList.remove('hidden'); }
-function closeModal(id) { $(id)?.classList.add('hidden'); }

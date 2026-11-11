@@ -333,6 +333,9 @@ function goToPdfPageIframe(pageNum) {
 
 async function openFile(file, title, breadcrumb, button) {
   if (!file.path || !String(file.name || file.path).toLowerCase().endsWith('.pdf')) return;
+  if (activeModule !== 'study') {
+    switchModule('study');
+  }
   selectedFile?.classList.remove('selected');
   selectedFile = button;
   button?.classList.add('selected');
@@ -1022,10 +1025,6 @@ function switchModule(moduleName) {
   document.querySelectorAll('.nav-tab').forEach(b => {
     b.classList.toggle('active', b.dataset.view === moduleName);
   });
-
-  // Library sidebar tree is visible when in study mode
-  const libSection = $('sidebar-library-section');
-  if (libSection) libSection.hidden = (moduleName !== 'study');
 
   if (moduleName === 'attendance') loadAttendanceHub();
   if (moduleName === 'timetable') loadTimetableDay(0);
@@ -2243,8 +2242,11 @@ async function updateSemesterOptions() {
     for (const semester of result.semesters) {
       syncSemester.add(new Option(semester, semester));
     }
-    if ([...syncSemester.options].some(option => option.value === previous)) {
+    if (previous && [...syncSemester.options].some(option => option.value === previous)) {
       syncSemester.value = previous;
+    } else if (result.semesters.length > 0) {
+      // Default to student's current/latest active semester
+      syncSemester.value = result.semesters[result.semesters.length - 1];
     }
     syncSemester.disabled = lastSyncRunning;
 
