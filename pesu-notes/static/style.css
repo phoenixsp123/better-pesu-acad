@@ -329,13 +329,54 @@ body {
   color: #9289ad;
 }
 
+/* Sidebar Library Section */
+#sidebar-library-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 160px;
+  overflow: hidden;
+}
+
+#sidebar-library-section[hidden] {
+  display: none !important;
+}
+
+#sidebar-library-section .side-heading,
+#sidebar-library-section .personal-tabs,
+#sidebar-library-section .search-box {
+  flex-shrink: 0;
+}
+
 /* Navigation Tree */
 .navigation {
   overflow-y: auto;
-  flex: 1;
-  max-height: calc(100vh - 460px);
-  min-height: 140px;
-  padding-right: 3px;
+  overflow-x: hidden;
+  flex: 1 1 0;
+  min-height: 0;
+  padding-right: 4px;
+  padding-bottom: 24px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(167, 139, 250, 0.35) transparent;
+}
+
+.navigation::-webkit-scrollbar {
+  width: 5px;
+}
+
+.navigation::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 999px;
+}
+
+.navigation::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.3);
+  border-radius: 999px;
+}
+
+.navigation::-webkit-scrollbar-thumb:hover {
+  background: rgba(167, 139, 250, 0.6);
 }
 
 .nav-sem, .nav-sub, .nav-unit, .nav-file {

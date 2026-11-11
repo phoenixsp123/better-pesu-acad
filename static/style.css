@@ -244,10 +244,27 @@ body.no-glow .glow {
   max-height: calc(100vh - 28px);
   padding: 20px 18px;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(167, 139, 250, 0.25) transparent;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.22);
+  border-radius: 999px;
 }
 
 .brand {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -284,6 +301,7 @@ body.no-glow .glow {
 
 /* Local Sync Control Card */
 .sync-card {
+  flex-shrink: 0;
   margin: 0 0 18px;
   padding: 14px;
   border: 1px solid var(--border-glass);
@@ -503,13 +521,54 @@ body.no-glow .glow {
   color: #9289ad;
 }
 
+/* Sidebar Library Section */
+#sidebar-library-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 160px;
+  overflow: hidden;
+}
+
+#sidebar-library-section[hidden] {
+  display: none !important;
+}
+
+#sidebar-library-section .side-heading,
+#sidebar-library-section .personal-tabs,
+#sidebar-library-section .search-box {
+  flex-shrink: 0;
+}
+
 /* Navigation Tree */
 .navigation {
   overflow-y: auto;
-  flex: 1;
-  max-height: calc(100vh - 460px);
-  min-height: 140px;
-  padding-right: 3px;
+  overflow-x: hidden;
+  flex: 1 1 0;
+  min-height: 0;
+  padding-right: 4px;
+  padding-bottom: 24px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(167, 139, 250, 0.35) transparent;
+}
+
+.navigation::-webkit-scrollbar {
+  width: 5px;
+}
+
+.navigation::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 999px;
+}
+
+.navigation::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.3);
+  border-radius: 999px;
+}
+
+.navigation::-webkit-scrollbar-thumb:hover {
+  background: rgba(167, 139, 250, 0.6);
 }
 
 .nav-sem, .nav-sub, .nav-unit, .nav-file {
@@ -630,6 +689,7 @@ body.no-glow .glow {
 }
 
 .side-footer {
+  flex-shrink: 0;
   padding: 16px 8px 0;
   border-top: 1px solid #ffffff18;
   font-size: 11px;
@@ -2616,9 +2676,35 @@ body.focus-mode-active {
 }
 
 @media (max-width: 900px) {
+  body {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
   .shell {
     grid-template-columns: 1fr;
+    height: auto;
+    max-height: none;
+    overflow: visible;
     padding: 12px;
+  }
+  .sidebar {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  #sidebar-library-section {
+    min-height: 0;
+    overflow: visible;
+  }
+  .navigation {
+    max-height: 55vh;
+    min-height: 220px;
+  }
+  .main {
+    height: auto;
+    max-height: none;
+    overflow: visible;
   }
   .attendance-container {
     grid-template-columns: 1fr;
