@@ -547,7 +547,7 @@ body.no-glow .glow {
   flex: 1 1 0;
   min-height: 0;
   padding-right: 4px;
-  padding-bottom: 24px;
+  padding-bottom: 48px;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(167, 139, 250, 0.35) transparent;
