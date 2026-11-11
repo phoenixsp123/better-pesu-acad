@@ -7,15 +7,14 @@
   <link rel="stylesheet" href="/static/style.css?v=20261111">
 </head>
 <body>
-  <div class="glow glow-one"></div>
-  <div class="glow glow-two"></div>
-
   <div class="shell">
     <!-- SIDEBAR -->
-    <aside class="sidebar glass">
+    <aside class="sidebar">
       <div class="brand">
-        <span class="brand-icon">✦</span>
-        <span>better<span class="accent">PESU</span><small>ACADEMIC WORKSPACE</small></span>
+        <span class="brand-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path><path d="M6 6h10"></path><path d="M6 10h10"></path></svg>
+        </span>
+        <span>betterPESU<small>Academic Workspace</small></span>
       </div>
 
       <!-- Sync Card -->
@@ -45,20 +44,20 @@
       </div>
 
       <!-- Main Section Switcher Tabs -->
-      <div class="side-heading">STUDENT WORKSPACE</div>
-      <div class="personal-tabs app-module-tabs">
-        <button id="tab-nav-study" class="module-nav-btn active">Study Space</button>
-        <button id="tab-nav-attendance" class="module-nav-btn">Attendance</button>
-        <button id="tab-nav-timetable" class="module-nav-btn">Timetable</button>
-        <button id="tab-nav-assignments" class="module-nav-btn">Assignments</button>
-        <button id="tab-nav-grades" class="module-nav-btn">Grades</button>
-        <button id="tab-nav-analytics" class="module-nav-btn">Analytics</button>
-        <button id="tab-nav-settings" class="module-nav-btn">Settings</button>
+      <div class="side-heading">WORKSPACE</div>
+      <div class="app-module-tabs">
+        <button id="tab-nav-study" class="module-nav-btn active"><span>▤</span> Study Space</button>
+        <button id="tab-nav-attendance" class="module-nav-btn"><span>◷</span> Attendance</button>
+        <button id="tab-nav-timetable" class="module-nav-btn"><span>▦</span> Timetable</button>
+        <button id="tab-nav-assignments" class="module-nav-btn"><span>🗂</span> Assignments</button>
+        <button id="tab-nav-grades" class="module-nav-btn"><span>🎯</span> Grades & SGPA</button>
+        <button id="tab-nav-analytics" class="module-nav-btn"><span>📊</span> Analytics</button>
+        <button id="tab-nav-settings" class="module-nav-btn"><span>⚙</span> Settings</button>
       </div>
 
       <!-- Library Section (Active when in Study Space) -->
       <div id="sidebar-library-section">
-        <div class="side-heading">YOUR LIBRARY</div>
+        <div class="side-heading">LIBRARY</div>
         <div class="personal-tabs">
           <button id="tab-library" class="active">Library</button>
           <button id="tab-bookmarks">Saved</button>
@@ -104,7 +103,7 @@
             <span id="nav-user-name">PESU Student</span>
             <button id="btn-quick-logout" class="nav-logout-btn" type="button">Log Out</button>
           </div>
-          <button id="btn-global-login" class="nav-login-btn" type="button">✦ Connect PESU Account</button>
+          <button id="btn-global-login" class="nav-login-btn" type="button">Connect PESU Account</button>
         </div>
       </nav>
 
@@ -112,11 +111,11 @@
       <div id="view-study-space" class="module-view active">
         <header class="topbar">
           <div>
-            <div class="eyebrow">YOUR STUDY SPACE</div>
-            <h1>Study smarter<span class="accent">.</span></h1>
-            <p>Everything you need, all in one place.</p>
+            <div class="eyebrow">WORKSPACE</div>
+            <h1>Study Space</h1>
+            <p>Lecture slides viewer with page navigation, zoom, and focus timer.</p>
           </div>
-          <div class="top-chip" id="focus-chip">✦ &nbsp; Focus mode ready</div>
+          <div class="top-chip" id="focus-chip">Focus mode ready</div>
         </header>
 
         <section class="workspace glass">
@@ -194,8 +193,8 @@
         <header class="topbar">
           <div>
             <div class="eyebrow">ACADEMIC TRACKING</div>
-            <h1>Attendance Hub<span class="accent">.</span></h1>
-            <p>Live subject-wise attendance and minimum 75% exam eligibility tracking.</p>
+            <h1>Attendance Hub</h1>
+            <p>Live subject-wise attendance and 75% exam eligibility tracking.</p>
           </div>
           <div class="module-top-actions">
             <label class="sem-select-wrapper" style="display: flex; align-items: center; gap: 6px;">
@@ -236,7 +235,7 @@
         <header class="topbar">
           <div>
             <div class="eyebrow">SCHEDULE</div>
-            <h1>Class Timetable<span class="accent">.</span></h1>
+            <h1>Class Timetable</h1>
             <p>Your weekly lecture and lab period schedule.</p>
           </div>
           <div class="module-top-actions">
@@ -264,7 +263,7 @@
         <header class="topbar">
           <div>
             <div class="eyebrow">PLANNER</div>
-            <h1>Assignments Tracker<span class="accent">.</span></h1>
+            <h1>Assignments Tracker</h1>
             <p>Keep track of course assignments, lab reports, and deadlines.</p>
           </div>
         </header>
@@ -300,7 +299,7 @@
         <header class="topbar">
           <div>
             <div class="eyebrow">ACADEMIC PERFORMANCE & PREDICTION</div>
-            <h1>GPA & ISA Marks Predictor<span class="accent">.</span></h1>
+            <h1>GPA & ISA Marks Predictor</h1>
             <p>Fetch your ISA 1 & 2 marks from PESU Academy and predict required ESA scores for your target SGPA.</p>
           </div>
           <div class="module-top-actions">
@@ -348,7 +347,7 @@
         <header class="topbar">
           <div>
             <div class="eyebrow">PRODUCTIVITY</div>
-            <h1>Study Analytics<span class="accent">.</span></h1>
+            <h1>Study Analytics</h1>
             <p>Your focus habits, Pomodoro sessions, and weekly trends.</p>
           </div>
         </header>
@@ -379,7 +378,7 @@
         <header class="topbar">
           <div>
             <div class="eyebrow">PREFERENCES & CONFIGURATION</div>
-            <h1>Settings<span class="accent">.</span></h1>
+            <h1>Settings</h1>
             <p>Customize your workspace theme, account connections, and application preferences.</p>
           </div>
         </header>
@@ -546,7 +545,7 @@
         </div>
       </div>
 
-      <div class="footer-note">✧ A calmer way to study, one lecture at a time.</div>
+      <div class="footer-note">Better PESU Academic Workspace</div>
     </main>
   </div>
 

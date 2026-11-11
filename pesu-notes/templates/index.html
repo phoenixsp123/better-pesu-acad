@@ -7,15 +7,14 @@
   <link rel="stylesheet" href="/static/style.css?v=20261111">
 </head>
 <body>
-  <div class="glow glow-one"></div>
-  <div class="glow glow-two"></div>
-
   <div class="shell">
     <!-- SIDEBAR -->
-    <aside class="sidebar glass">
+    <aside class="sidebar">
       <div class="brand">
-        <span class="brand-icon">✦</span>
-        <span>better<span class="accent">PESU</span><small>ACADEMIC WORKSPACE</small></span>
+        <span class="brand-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path><path d="M6 6h10"></path><path d="M6 10h10"></path></svg>
+        </span>
+        <span>betterPESU<small>Academic Workspace</small></span>
       </div>
 
       <!-- Sync Card -->
@@ -45,20 +44,20 @@
       </div>
 
       <!-- Main Section Switcher Tabs -->
-      <div class="side-heading">STUDENT WORKSPACE</div>
-      <div class="personal-tabs app-module-tabs">
-        <button id="tab-nav-study" class="module-nav-btn active">Study Space</button>
-        <button id="tab-nav-attendance" class="module-nav-btn">Attendance</button>
-        <button id="tab-nav-timetable" class="module-nav-btn">Timetable</button>
-        <button id="tab-nav-assignments" class="module-nav-btn">Assignments</button>
-        <button id="tab-nav-grades" class="module-nav-btn">Grades</button>
-        <button id="tab-nav-analytics" class="module-nav-btn">Analytics</button>
-        <button id="tab-nav-settings" class="module-nav-btn">Settings</button>
+      <div class="side-heading">WORKSPACE</div>
+      <div class="app-module-tabs">
+        <button id="tab-nav-study" class="module-nav-btn active"><span>▤</span> Study Space</button>
+        <button id="tab-nav-attendance" class="module-nav-btn"><span>◷</span> Attendance</button>
+        <button id="tab-nav-timetable" class="module-nav-btn"><span>▦</span> Timetable</button>
+        <button id="tab-nav-assignments" class="module-nav-btn"><span>🗂</span> Assignments</button>
+        <button id="tab-nav-grades" class="module-nav-btn"><span>🎯</span> Grades & SGPA</button>
+        <button id="tab-nav-analytics" class="module-nav-btn"><span>📊</span> Analytics</button>
+        <button id="tab-nav-settings" class="module-nav-btn"><span>⚙</span> Settings</button>
       </div>
 
       <!-- Library Section (Active when in Study Space) -->
       <div id="sidebar-library-section">
-        <div class="side-heading">YOUR LIBRARY</div>
+        <div class="side-heading">LIBRARY</div>
         <div class="personal-tabs">
           <button id="tab-library" class="active">Library</button>
           <button id="tab-bookmarks">Saved</button>
@@ -78,21 +77,45 @@
         <div class="student-mini-status">
           <span class="user-indicator-dot">●</span>
           <span id="sidebar-student-name">PESU Student</span>
+          <button id="sidebar-auth-btn" class="sidebar-auth-btn" type="button">Connect</button>
         </div>
       </div>
     </aside>
 
     <!-- MAIN VIEW AREA -->
     <main class="main">
+      <!-- GLOBAL TOP NAVIGATION BAR -->
+      <nav class="app-global-nav glass">
+        <div class="nav-brand-group">
+          <div class="app-tabs-pill">
+            <button id="nav-btn-study" class="nav-tab active" data-view="study">▤ Study Space</button>
+            <button id="nav-btn-attendance" class="nav-tab" data-view="attendance">◷ Attendance</button>
+            <button id="nav-btn-timetable" class="nav-tab" data-view="timetable">▦ Timetable</button>
+            <button id="nav-btn-assignments" class="nav-tab" data-view="assignments">🗂 Assignments</button>
+            <button id="nav-btn-grades" class="nav-tab" data-view="grades">🎯 Grades</button>
+            <button id="nav-btn-analytics" class="nav-tab" data-view="analytics">📊 Analytics</button>
+            <button id="nav-btn-settings" class="nav-tab" data-view="settings">⚙ Settings</button>
+          </div>
+        </div>
+        <div class="nav-auth-group">
+          <div id="nav-user-badge" class="nav-user-badge hidden">
+            <span class="user-indicator-dot">●</span>
+            <span id="nav-user-name">PESU Student</span>
+            <button id="btn-quick-logout" class="nav-logout-btn" type="button">Log Out</button>
+          </div>
+          <button id="btn-global-login" class="nav-login-btn" type="button">Connect PESU Account</button>
+        </div>
+      </nav>
+
       <!-- 1. PRIMARY VIEW: STUDY SPACE (The original workspace with PDF Viewer & Timer) -->
       <div id="view-study-space" class="module-view active">
         <header class="topbar">
           <div>
-            <div class="eyebrow">YOUR STUDY SPACE</div>
-            <h1>Study smarter<span class="accent">.</span></h1>
-            <p>Everything you need, all in one place.</p>
+            <div class="eyebrow">WORKSPACE</div>
+            <h1>Study Space</h1>
+            <p>Lecture slides viewer with page navigation, zoom, and focus timer.</p>
           </div>
-          <div class="top-chip" id="focus-chip">✦ &nbsp; Focus mode ready</div>
+          <div class="top-chip" id="focus-chip">Focus mode ready</div>
         </header>
 
         <section class="workspace glass">
@@ -103,10 +126,22 @@
               <div id="document-path" class="subtle">Browse your courses on the left.</div>
             </div>
             <div class="doc-actions">
-              <button id="study-fullscreen" class="action hidden" type="button" aria-label="Enter fullscreen study mode" title="Fullscreen study mode">⛶ Focus View</button>
-              <button id="bookmark-current" class="action hidden" type="button">☆ Save</button>
-              <a id="open-link" class="action hidden" target="_blank" rel="noopener">↗ Open</a>
-              <a id="download-link" class="action hidden" download>↓ Download</a>
+              <div id="pdf-page-controls" class="pdf-page-nav hidden" title="Use Left / Right Arrow keys to navigate pages">
+                <button id="btn-pdf-prev" class="action" type="button" aria-label="Previous page (Left Arrow)" title="Previous page (Left Arrow)">◂</button>
+                <span id="pdf-page-indicator" class="pdf-page-indicator" title="Click to jump to a specific page">Page 1</span>
+                <button id="btn-pdf-next" class="action" type="button" aria-label="Next page (Right Arrow)" title="Next page (Right Arrow)">▸</button>
+              </div>
+              <div id="pdf-zoom-controls" class="pdf-zoom-nav hidden" title="Pinch trackpad to zoom in / out">
+                <button id="btn-pdf-zoom-out" class="action" type="button" title="Zoom out (−)">−</button>
+                <span id="pdf-zoom-indicator" class="pdf-zoom-indicator" title="Reset zoom to 100%">100%</span>
+                <button id="btn-pdf-zoom-in" class="action" type="button" title="Zoom in (+)">+</button>
+                <button id="btn-pdf-zoom-fit" class="action" type="button" title="Fit to screen width">⤢ Fit</button>
+              </div>
+              <button id="study-fullscreen" class="action hidden" type="button" aria-label="Enter fullscreen study mode" title="Fullscreen distraction-free study mode">⛶ Focus View</button>
+              <button id="bookmark-current" class="action hidden" type="button" title="Bookmark this lecture">☆ Bookmark</button>
+              <button id="btn-open-native" class="action hidden" type="button" title="Open PDF in Mac Preview or default viewer">↗ Preview</button>
+              <button id="btn-reveal-finder" class="action hidden" type="button" title="Show PDF in macOS Finder">📂 Finder</button>
+              <button id="btn-save-copy" class="action hidden" type="button" title="Save a copy of this PDF">↓ Save Copy</button>
             </div>
           </div>
 
@@ -116,11 +151,18 @@
             <p>Select a PDF from the library to preview it.</p>
           </div>
 
+          <!-- Native Canvas PDF Stage with Trackpad Pinch-to-Zoom & Scroll Tracking -->
+          <div id="pdf-stage" class="pdf-stage hidden">
+            <div id="pdf-scroll-viewport" class="pdf-scroll-viewport" tabindex="0">
+              <div id="pdf-pages-container" class="pdf-pages-container"></div>
+            </div>
+          </div>
+
           <iframe id="pdf-viewer" title="Lecture PDF viewer" class="pdf-viewer hidden"></iframe>
 
           <div class="workspace-bottom">
             <span id="file-count">Ready when you are</span>
-            <button id="study-exit" class="study-exit" type="button" aria-label="Exit fullscreen study mode">⤢ Exit</button>
+            <button id="study-exit" class="study-exit" type="button" aria-label="Exit fullscreen study mode" title="Exit focus view (Esc)">✕ Exit Focus Mode</button>
             <div class="timer-wrap">
               <div id="timer-panel" class="timer-panel hidden">
                 <div class="timer-label">STAY IN THE ZONE</div>
@@ -151,66 +193,39 @@
         <header class="topbar">
           <div>
             <div class="eyebrow">ACADEMIC TRACKING</div>
-            <h1>Attendance Hub<span class="accent">.</span></h1>
-            <p>Live attendance percentage, bunk calculator, and what-if simulation.</p>
+            <h1>Attendance Hub</h1>
+            <p>Live subject-wise attendance and 75% exam eligibility tracking.</p>
           </div>
           <div class="module-top-actions">
-            <button id="btn-sync-attendance" class="action">↻ Sync from PESU</button>
+            <label class="sem-select-wrapper" style="display: flex; align-items: center; gap: 6px;">
+              <span class="subtle" style="font-size: 11px;">Sem:</span>
+              <select id="attendance-semester-select" class="sync-semester" style="margin:0; padding: 7px 12px; font-size: 12px; width: auto;">
+                <option value="">All Semesters</option>
+              </select>
+            </label>
+            <button id="btn-sync-attendance" class="sync-button" style="width: auto; padding: 8px 16px;">↻ Sync from PESU</button>
             <button id="btn-manual-attendance" class="action">+ Add Subject</button>
             <button id="btn-export-attendance-csv" class="action">↓ Export CSV</button>
             <button id="btn-import-attendance-csv" class="action">↑ Import CSV</button>
           </div>
         </header>
 
-        <div class="attendance-container">
+        <!-- Attendance Overview Summary Banner -->
+        <div class="att-summary-banner glass">
+          <div class="att-summary-col">
+            <span class="att-summary-label">ENROLLED COURSES</span>
+            <strong id="att-total-subjects" class="att-summary-num">0</strong>
+          </div>
+          <div class="att-summary-divider"></div>
+          <div class="att-summary-col">
+            <span class="att-summary-label">SAFE (≥ 75%)</span>
+            <strong id="att-safe-count" class="att-summary-num safe-text">0</strong>
+          </div>
+        </div>
+
+        <div class="attendance-container-full">
           <div class="attendance-cards-grid" id="attendance-cards-grid">
             <div class="empty">Loading attendance records…</div>
-          </div>
-
-          <!-- Bunk Calculator & Simulator Panel -->
-          <div class="attendance-sim-box glass">
-            <div class="timer-label">ATTENDANCE CALCULATOR & BUNK SIMULATOR</div>
-            <div class="sim-row">
-              <label class="sim-field">Subject
-                <select id="sim-subject-select" class="sync-semester">
-                  <option value="">Custom inputs</option>
-                </select>
-              </label>
-              <label class="sim-field">Attended
-                <input id="sim-input-attended" type="number" min="0" value="25" class="custom-input-sm">
-              </label>
-              <label class="sim-field">Conducted
-                <input id="sim-input-conducted" type="number" min="0" value="30" class="custom-input-sm">
-              </label>
-              <label class="sim-field">Target %
-                <input id="sim-input-target" type="number" min="1" max="100" value="75" class="custom-input-sm">
-              </label>
-            </div>
-
-            <div class="personal-tabs sim-tabs">
-              <button class="sim-tab-btn active" data-sim-tab="bunk">Bunk Classes</button>
-              <button class="sim-tab-btn" data-sim-tab="target">Classes Needed</button>
-              <button class="sim-tab-btn" data-sim-tab="chain">Sequence Simulator</button>
-            </div>
-
-            <div id="sim-body-bunk" class="sim-tab-body">
-              <label class="duration-label">What if I miss <input id="sim-bunk-count" type="number" min="1" max="40" value="2"> classes?</label>
-              <div id="sim-bunk-result" class="sim-stat-box">—</div>
-            </div>
-
-            <div id="sim-body-target" class="sim-tab-body hidden">
-              <div id="sim-target-result" class="sim-stat-box">—</div>
-            </div>
-
-            <div id="sim-body-chain" class="sim-tab-body hidden">
-              <label class="duration-label">Enter sequence (e.g. attend, bunk, attend):</label>
-              <input id="sim-chain-input" class="search-box-input-full" placeholder="attend, bunk, attend">
-              <button id="btn-run-chain" class="apply-minutes">Run Simulation</button>
-              <div id="sim-chain-output" class="chain-steps-list"></div>
-            </div>
-
-            <div class="matrix-heading">Projection for Next 5 Classes</div>
-            <div id="sim-matrix-grid" class="sim-matrix-grid"></div>
           </div>
         </div>
       </div>
@@ -220,10 +235,13 @@
         <header class="topbar">
           <div>
             <div class="eyebrow">SCHEDULE</div>
-            <h1>Class Timetable<span class="accent">.</span></h1>
+            <h1>Class Timetable</h1>
             <p>Your weekly lecture and lab period schedule.</p>
           </div>
-          <button id="btn-add-period" class="action">+ Add Period</button>
+          <div class="module-top-actions">
+            <button id="btn-sync-timetable" class="sync-button" style="width: auto; padding: 8px 16px;">↻ Sync Timetable from PESU</button>
+            <button id="btn-add-period" class="action">+ Add Period</button>
+          </div>
         </header>
 
         <div class="personal-tabs" id="tt-days">
@@ -236,7 +254,7 @@
         </div>
 
         <div class="timetable-grid glass" id="timetable-display-grid">
-          <div class="empty">No periods for this day. Click "+ Add Period" to add one.</div>
+          <div class="empty">No periods loaded. Click "↻ Sync Timetable from PESU" to fetch your schedule.</div>
         </div>
       </div>
 
@@ -245,7 +263,7 @@
         <header class="topbar">
           <div>
             <div class="eyebrow">PLANNER</div>
-            <h1>Assignments Tracker<span class="accent">.</span></h1>
+            <h1>Assignments Tracker</h1>
             <p>Keep track of course assignments, lab reports, and deadlines.</p>
           </div>
         </header>
@@ -280,33 +298,46 @@
       <div id="view-grades" class="module-view hidden">
         <header class="topbar">
           <div>
-            <div class="eyebrow">EVALUATION</div>
-            <h1>Grades & CIE<span class="accent">.</span></h1>
-            <p>Autonomous SGPA estimator and internal assessment calculator.</p>
+            <div class="eyebrow">ACADEMIC PERFORMANCE & PREDICTION</div>
+            <h1>GPA & ISA Marks Predictor</h1>
+            <p>Fetch your ISA 1 & 2 marks from PESU Academy and predict required ESA scores for your target SGPA.</p>
+          </div>
+          <div class="module-top-actions">
+            <label class="sem-select-wrapper" style="display: flex; align-items: center; gap: 6px;">
+              <span class="subtle" style="font-size: 11px;">Sem:</span>
+              <select id="gpa-semester-select" class="sync-semester" style="margin:0; padding: 7px 12px; font-size: 12px; width: auto;">
+                <option value="">Current Semester</option>
+              </select>
+            </label>
+            <button id="btn-fetch-isa-marks" class="sync-button" style="width: auto; padding: 8px 16px;">↻ Fetch Marks from PESU</button>
+            <button id="btn-add-gpa-course" class="action">+ Add Course</button>
           </div>
         </header>
 
-        <div class="grades-grid">
-          <div class="personal-panel glass">
-            <h2>Semester SGPA Estimator</h2>
-            <div id="sgpa-rows" class="sgpa-rows-container"></div>
-            <div class="sgpa-actions">
-              <button id="btn-add-sgpa-row" class="action">+ Add Subject</button>
-              <button id="btn-calc-sgpa" class="sync-button" style="width: auto; padding: 10px 20px;">Calculate SGPA</button>
+        <!-- GRAND SGPA METER BANNER -->
+        <div class="gpa-grand-banner glass">
+          <div class="gpa-grand-pill">
+            <span class="gpa-grand-label">PREDICTED SGPA</span>
+            <div class="gpa-grand-number-wrap">
+              <strong id="gpa-grand-score">0.00</strong>
+              <span class="gpa-grand-scale">/ 10.0</span>
             </div>
-            <div id="sgpa-score-box" class="grade-result-pill">Estimated SGPA: —</div>
           </div>
+          <div class="gpa-grand-stats">
+            <div>Total Enrolled Credits: <strong id="gpa-total-credits">0</strong></div>
+            <div id="gpa-insight-text" class="subtle">Slide ISA and ESA marks to dynamically simulate your subject grades and semester GPA.</div>
+          </div>
+        </div>
 
-          <div class="personal-panel glass">
-            <h2>CIE Internal Marks (Out of 50)</h2>
-            <form id="cie-form" class="cie-form-layout">
-              <label>ISA 1 (Scaled) <input id="cie-isa1" type="number" step="0.5" min="0" max="20" value="16" class="custom-input-sm"></label>
-              <label>ISA 2 (Scaled) <input id="cie-isa2" type="number" step="0.5" min="0" max="20" value="17" class="custom-input-sm"></label>
-              <label>Assignments / Quizzes <input id="cie-asg" type="number" step="0.5" min="0" max="10" value="9" class="custom-input-sm"></label>
-              <label>Lab / Project <input id="cie-lab" type="number" step="0.5" min="0" max="10" value="5" class="custom-input-sm"></label>
-              <button type="submit" class="sync-button">Calculate CIE</button>
-            </form>
-            <div id="cie-result-box" class="grade-result-pill">CIE Score: —</div>
+        <div class="grades-grid-full">
+          <!-- SUBJECT PREDICTOR CARDS -->
+          <div class="gpa-predictor-container">
+            <div class="gpa-predictor-subhead">
+              <span class="subtle" style="font-size: 12px;">Total (100) = CIE (50) + ESA (50% wt · /100 Reg, /50 CIE) · Grades update live as you drag sliders</span>
+            </div>
+            <div id="gpa-subjects-container" class="gpa-cards-grid">
+              <div class="empty">Loading course predictors…</div>
+            </div>
           </div>
         </div>
       </div>
@@ -316,7 +347,7 @@
         <header class="topbar">
           <div>
             <div class="eyebrow">PRODUCTIVITY</div>
-            <h1>Study Analytics<span class="accent">.</span></h1>
+            <h1>Study Analytics</h1>
             <p>Your focus habits, Pomodoro sessions, and weekly trends.</p>
           </div>
         </header>
@@ -346,43 +377,175 @@
       <div id="view-settings" class="module-view hidden">
         <header class="topbar">
           <div>
-            <div class="eyebrow">PREFERENCES</div>
-            <h1>Settings & Profile<span class="accent">.</span></h1>
-            <p>Manage your account, local data, and application status.</p>
+            <div class="eyebrow">PREFERENCES & CONFIGURATION</div>
+            <h1>Settings</h1>
+            <p>Customize your workspace theme, account connections, and application preferences.</p>
           </div>
         </header>
 
-        <div class="personal-panel glass">
-          <h2>PESU Academy Account</h2>
-          <div id="settings-profile-card" class="profile-card-content">
-            <p class="subtle">Sign in to automatically sync your slides and attendance.</p>
-          </div>
-          <div class="settings-btn-row">
-            <button id="btn-login-modal" class="sync-button" style="width: auto; padding: 10px 18px;">Connect Account</button>
-            <button id="btn-logout" class="action hidden">Log Out</button>
-          </div>
-        </div>
+        <div class="settings-grid">
+          <!-- CARD 1: THEME & APPEARANCE -->
+          <div class="personal-panel glass settings-card">
+            <div class="settings-card-header">
+              <div>
+                <h2>Workspace Theme</h2>
+                <div class="subtle">Select a color scheme that matches your study focus.</div>
+              </div>
+              <span class="theme-active-tag" id="current-theme-name">Midnight Slate</span>
+            </div>
 
-        <div class="personal-panel glass">
-          <h2>Application & Storage</h2>
-          <div class="settings-row">
-            <div>
-              <strong>LibreOffice Status</strong>
-              <div class="subtle" id="settings-lo-desc">Required for PPTX to PDF conversion</div>
+            <div class="theme-picker-grid">
+              <!-- Slate -->
+              <div class="theme-tile active" data-theme-id="slate">
+                <div class="theme-swatch" style="background: #0c0e14; border: 1px solid #38bdf8;">
+                  <span class="swatch-accent" style="background: #38bdf8;"></span>
+                </div>
+                <div class="theme-meta">
+                  <div class="theme-title">Midnight Slate</div>
+                  <div class="theme-desc">Charcoal & sky blue · Clean modern</div>
+                </div>
+                <span class="theme-check">✓</span>
+              </div>
+
+              <!-- Onyx -->
+              <div class="theme-tile" data-theme-id="onyx">
+                <div class="theme-swatch" style="background: #050506; border: 1px solid #e2e8f0;">
+                  <span class="swatch-accent" style="background: #e2e8f0;"></span>
+                </div>
+                <div class="theme-meta">
+                  <div class="theme-title">Onyx Black</div>
+                  <div class="theme-desc">True black & silver · Pure focus</div>
+                </div>
+                <span class="theme-check">✓</span>
+              </div>
+
+              <!-- Emerald -->
+              <div class="theme-tile" data-theme-id="emerald">
+                <div class="theme-swatch" style="background: #080d0a; border: 1px solid #34d399;">
+                  <span class="swatch-accent" style="background: #34d399;"></span>
+                </div>
+                <div class="theme-meta">
+                  <div class="theme-title">Nordic Forest</div>
+                  <div class="theme-desc">Deep pine & mint · Organic calm</div>
+                </div>
+                <span class="theme-check">✓</span>
+              </div>
+
+              <!-- Amber -->
+              <div class="theme-tile" data-theme-id="amber">
+                <div class="theme-swatch" style="background: #0e0a08; border: 1px solid #f59e0b;">
+                  <span class="swatch-accent" style="background: #f59e0b;"></span>
+                </div>
+                <div class="theme-meta">
+                  <div class="theme-title">Warm Amber</div>
+                  <div class="theme-desc">Espresso & warm copper · Cozy study</div>
+                </div>
+                <span class="theme-check">✓</span>
+              </div>
+
+              <!-- Iris -->
+              <div class="theme-tile" data-theme-id="iris">
+                <div class="theme-swatch" style="background: #0e0c18; border: 1px solid #a78bfa;">
+                  <span class="swatch-accent" style="background: #a78bfa;"></span>
+                </div>
+                <div class="theme-meta">
+                  <div class="theme-title">Classic Iris</div>
+                  <div class="theme-desc">Refined dusk & lavender purple</div>
+                </div>
+                <span class="theme-check">✓</span>
+              </div>
             </div>
-            <span id="settings-lo-badge" class="badge-safe">Checking…</span>
+
+            <div class="settings-divider"></div>
+
+            <div class="settings-toggle-row">
+              <div>
+                <strong>Ambient Background Lighting</strong>
+                <div class="subtle">Soft blurred glow along screen edges. Turn off for a flat minimal aesthetic.</div>
+              </div>
+              <label class="switch-toggle" title="Toggle ambient lighting">
+                <input id="toggle-ambient-glow" type="checkbox" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
           </div>
-          <div class="settings-row">
-            <div>
-              <strong>Local Data Folder</strong>
-              <div class="subtle" id="settings-data-path">—</div>
+
+          <!-- CARD 2: PESU ACADEMY ACCOUNT -->
+          <div class="personal-panel glass settings-card">
+            <div class="settings-card-header">
+              <div>
+                <h2>PESU Academy Connection</h2>
+                <div class="subtle">Secure, local-only authentication with your student credentials.</div>
+              </div>
+              <span id="settings-auth-status-badge" class="badge-safe">Checking…</span>
             </div>
-            <button id="btn-open-folder" class="action">Open in Finder/Explorer</button>
+
+            <div id="settings-profile-card" class="profile-card-content">
+              <p class="subtle">Sign in to automatically sync your slides and attendance.</p>
+            </div>
+
+            <div class="settings-btn-row">
+              <button id="btn-login-modal" class="sync-button" style="width: auto; padding: 9px 18px;">Connect Account</button>
+              <button id="btn-sync-all-settings" class="action">↻ Sync All Academic Data</button>
+              <button id="btn-logout" class="action-danger hidden">Log Out</button>
+            </div>
+          </div>
+
+          <!-- CARD 3: APPLICATION, STORAGE & TOOLS -->
+          <div class="personal-panel glass settings-card">
+            <div class="settings-card-header">
+              <div>
+                <h2>Storage & Environment</h2>
+                <div class="subtle">Local folders, document converters, and desktop runtime.</div>
+              </div>
+            </div>
+
+            <div class="settings-list-grid">
+              <div class="settings-item-box">
+                <div class="item-title-row">
+                  <span>LibreOffice Converter</span>
+                  <span id="settings-lo-badge" class="badge-safe">Checking…</span>
+                </div>
+                <div class="subtle" id="settings-lo-desc">Enables local PPTX to PDF conversion.</div>
+              </div>
+
+              <div class="settings-item-box">
+                <div class="item-title-row">
+                  <span>Unit PDF Merger</span>
+                  <button id="btn-merge-all-units" class="action-sm">⧉ Combine All Unit PDFs</button>
+                </div>
+                <div class="subtle">Combines all individual lecture slides in each unit into a single unified unit PDF.</div>
+              </div>
+
+              <div class="settings-item-box">
+                <div class="item-title-row">
+                  <span>Local Data Directory</span>
+                  <button id="btn-open-folder" class="action-sm">📂 Open in Finder</button>
+                </div>
+                <div class="subtle path-truncate" id="settings-data-path">—</div>
+              </div>
+
+              <div class="settings-item-box">
+                <div class="item-title-row">
+                  <span>Desktop Runtime</span>
+                  <span class="badge-chip">macOS · PyWebView</span>
+                </div>
+                <div class="subtle">Native high-performance desktop webview environment.</div>
+              </div>
+
+              <div class="settings-item-box">
+                <div class="item-title-row">
+                  <span>Local SQLite Database</span>
+                  <span class="badge-chip">betterpesu.db</span>
+                </div>
+                <div class="subtle">Encrypted and isolated local database for offline fast loading.</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="footer-note">✧ A calmer way to study, one lecture at a time.</div>
+      <div class="footer-note">Better PESU Academic Workspace</div>
     </main>
   </div>
 
@@ -461,6 +624,7 @@
     </div>
   </div>
 
+  <script src="/static/vendor/pdfjs/pdf.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
