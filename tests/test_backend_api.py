@@ -296,3 +296,82 @@ def test_profile_update_and_resolution(test_client):
     assert p2["prn"] == "PES1202300468"
 
 
+def test_bookmarks_and_recent_endpoints(test_client):
+    client, cfg = test_client
+
+    # Add bookmark with breadcrumb and page
+    res_bm = client.post("/api/bookmarks", json={
+        "file_path": "Sem-3/OS/sample.pdf",
+        "title": "OS Lecture 1",
+        "breadcrumb": "Sem-3 / OS / Unit 1",
+        "page_number": 7,
+        "action": "add"
+    })
+    assert res_bm.status_code == 200
+    assert res_bm.get_json()["bookmarked"] is True
+
+    # List bookmarks
+    res_bms = client.get("/api/bookmarks")
+    assert res_bms.status_code == 200
+    bms = res_bms.get_json()["bookmarks"]
+    assert len(bms) == 1
+    assert bms[0]["file_path"] == "Sem-3/OS/sample.pdf"
+    assert bms[0]["breadcrumb"] == "Sem-3 / OS / Unit 1"
+    assert bms[0]["page_number"] == 7
+
+    # Remove bookmark explicitly
+    res_rm = client.post("/api/bookmarks", json={
+        "file_path": "Sem-3/OS/sample.pdf",
+        "action": "remove"
+    })
+    assert res_rm.status_code == 200
+    assert res_rm.get_json()["bookmarked"] is False
+
+    # Record recent file
+    res_rec = client.post("/api/recent", json={
+        "file_path": "Sem-3/OS/sample.pdf",
+        "title": "OS Lecture 1",
+        "breadcrumb": "Sem-3 / OS / Unit 1",
+        "last_page": 14
+    })
+    assert res_rec.status_code == 200
+
+    # Get recent files
+    res_rec_list = client.get("/api/recent")
+    assert res_rec_list.status_code == 200
+    recents = res_rec_list.get_json()["recent"]
+    assert len(recents) == 1
+    assert recents[0]["file_path"] == "Sem-3/OS/sample.pdf"
+    assert recents[0]["last_page"] == 14
+
+    # Delete recent file
+    res_del_rec = client.delete("/api/recent", json={"file_path": "Sem-3/OS/sample.pdf"})
+    assert res_del_rec.status_code == 200
+    assert len(client.get("/api/recent").get_json()["recent"]) == 0
+
+
+def test_app_state_endpoints(test_client):
+    client, cfg = test_client
+
+    # Initially empty or dict
+    res_state0 = client.get("/api/state")
+    assert res_state0.status_code == 200
+
+    # Save state
+    res_save = client.post("/api/state", json={
+        "last_doc": "Sem-3/OS/sample.pdf",
+        "last_page": 12,
+        "active_tab": "bookmarks"
+    })
+    assert res_save.status_code == 200
+
+    # Read back state
+    res_state = client.get("/api/state")
+    assert res_state.status_code == 200
+    st = res_state.get_json()
+    assert st["last_doc"] == "Sem-3/OS/sample.pdf"
+    assert st["last_page"] == 12
+    assert st["active_tab"] == "bookmarks"
+
+
+

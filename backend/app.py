@@ -838,15 +838,18 @@ def create_app(config: Optional[Config] = None) -> Flask:
         title = p.get("title", "").strip()
         page = int(p.get("page_number", 1))
         notes = p.get("notes", "")
+        crumb = p.get("breadcrumb", "")
+        action = p.get("action")
 
         if not path:
             return jsonify({"error": "file_path is required."}), 400
 
-        if db.is_bookmarked(path):
+        is_saved = db.is_bookmarked(path)
+        if action == "remove" or (action is None and is_saved):
             db.remove_bookmark(path)
             return jsonify({"bookmarked": False, "message": "Bookmark removed."})
         else:
-            db.add_bookmark(path, title or Path(path).name, page, notes)
+            db.add_bookmark(path, title or Path(path).name, page, notes, crumb)
             return jsonify({"bookmarked": True, "message": "Bookmark saved."})
 
     @app.get("/api/recent")
@@ -864,6 +867,30 @@ def create_app(config: Optional[Config] = None) -> Flask:
         if path:
             db.record_recent_file(path, title or Path(path).name, crumb, last_page)
         return jsonify({"message": "Recent document recorded."})
+
+    @app.delete("/api/recent")
+    def remove_recent():
+        p = request.get_json(silent=True) or {}
+        path = p.get("file_path", "").strip()
+        if path:
+            db.remove_recent_file(path)
+        return jsonify({"message": "Recent document removed."})
+
+    # --- App State & Settings ---
+    @app.get("/api/state")
+    def get_app_state():
+        state = db.get_setting("app_state", {})
+        return jsonify(state if isinstance(state, dict) else {})
+
+    @app.post("/api/state")
+    def save_app_state():
+        p = request.get_json(silent=True) or {}
+        current = db.get_setting("app_state", {})
+        if not isinstance(current, dict):
+            current = {}
+        current.update(p)
+        db.set_setting("app_state", current)
+        return jsonify({"message": "State saved.", "state": current})
 
     # --- Settings & Migration ---
     @app.get("/api/settings")

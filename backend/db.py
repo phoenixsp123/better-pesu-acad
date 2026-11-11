@@ -122,6 +122,7 @@ class Database:
                     title TEXT NOT NULL,
                     page_number INTEGER DEFAULT 1,
                     notes TEXT,
+                    breadcrumb TEXT DEFAULT '',
                     created_at TEXT NOT NULL
                 );
 
@@ -156,6 +157,10 @@ class Database:
                 cols = [r["name"] for r in conn.execute("PRAGMA table_info(attendance)").fetchall()]
                 if "semester" not in cols:
                     conn.execute("ALTER TABLE attendance ADD COLUMN semester TEXT DEFAULT ''")
+
+                bm_cols = [r["name"] for r in conn.execute("PRAGMA table_info(bookmarks)").fetchall()]
+                if "breadcrumb" not in bm_cols:
+                    conn.execute("ALTER TABLE bookmarks ADD COLUMN breadcrumb TEXT DEFAULT ''")
 
                 # Clean legacy attendance records where semester was empty
                 conn.execute("""
@@ -603,16 +608,18 @@ class Database:
             rows = conn.execute("SELECT * FROM bookmarks ORDER BY created_at DESC").fetchall()
             return [dict(r) for r in rows]
 
-    def add_bookmark(self, file_path: str, title: str, page_number: int = 1, notes: str = "") -> None:
+    def add_bookmark(self, file_path: str, title: str, page_number: int = 1, notes: str = "", breadcrumb: str = "") -> None:
         now = datetime.now(timezone.utc).isoformat()
         with self.get_connection() as conn:
             conn.execute("""
-                INSERT INTO bookmarks (file_path, title, page_number, notes, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO bookmarks (file_path, title, page_number, notes, breadcrumb, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(file_path) DO UPDATE SET
+                    title = excluded.title,
                     page_number = excluded.page_number,
-                    notes = excluded.notes
-            """, (file_path, title, page_number, notes, now))
+                    notes = excluded.notes,
+                    breadcrumb = excluded.breadcrumb
+            """, (file_path, title, page_number, notes, breadcrumb, now))
             conn.commit()
 
     def remove_bookmark(self, file_path: str) -> None:
@@ -644,6 +651,11 @@ class Database:
         with self.get_connection() as conn:
             rows = conn.execute("SELECT * FROM recent_files ORDER BY last_viewed_at DESC LIMIT ?", (limit,)).fetchall()
             return [dict(r) for r in rows]
+
+    def remove_recent_file(self, file_path: str) -> None:
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM recent_files WHERE file_path = ?", (file_path,))
+            conn.commit()
 
     # --- Study Sessions & Analytics ---
     def record_study_session(

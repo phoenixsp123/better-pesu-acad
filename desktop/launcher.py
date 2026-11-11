@@ -25,8 +25,15 @@ from backend.app import create_app
 logger = logging.getLogger("betterpesu.desktop")
 
 
-def find_free_port() -> int:
-    """Find a dynamically available TCP port on localhost."""
+def find_free_port(preferred_port: int = 5055) -> int:
+    """Find an available TCP port on localhost, preferring a consistent port across launches."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("127.0.0.1", preferred_port))
+            return preferred_port
+        except OSError:
+            pass
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         s.listen(1)

@@ -51,8 +51,17 @@ let renderingPages = new Set();
 let renderDebounceTimer = null;
 
 function updatePdfPageUI() {
+  const pageInput = $('pdf-page-input');
+  if (pageInput && document.activeElement !== pageInput) {
+    pageInput.value = currentPdfPage;
+    pageInput.max = totalPdfPages > 1 ? totalPdfPages : 1;
+  }
+  const pageTotal = $('pdf-page-total');
+  if (pageTotal) {
+    pageTotal.textContent = `/ ${totalPdfPages}`;
+  }
   const indicator = $('pdf-page-indicator');
-  if (indicator) {
+  if (indicator && !pageInput) {
     if (totalPdfPages > 1) {
       indicator.textContent = `Page ${currentPdfPage} / ${totalPdfPages}`;
     } else {
@@ -237,8 +246,12 @@ async function renderSinglePage(pageNum) {
   }
 }
 
+let isProgrammaticScrolling = false;
+let programmaticScrollTimer = null;
+
 // Scroll Tracking: updates the top counter in real time as the user scrolls
 function onPdfViewportScroll() {
+  if (isProgrammaticScrolling) return;
   if (!activePdfDoc || totalPdfPages <= 1) return;
   const viewportEl = $('pdf-scroll-viewport');
   if (!viewportEl) return;
@@ -264,16 +277,17 @@ function onPdfViewportScroll() {
     currentPdfPage = closestPage;
     updatePdfPageUI();
     wrappers.forEach(w => w.classList.toggle('active-page', parseInt(w.dataset.page, 10) === currentPdfPage));
+    saveCurrentViewState();
   }
 
   scheduleVisiblePagesRender();
 }
 
 function goToPdfPage(pageNum) {
-  scrollToPdfPage(pageNum);
+  scrollToPdfPage(pageNum, false);
 }
 
-function scrollToPdfPage(pageNum) {
+function scrollToPdfPage(pageNum, smooth = false) {
   pageNum = Math.max(1, Math.min(totalPdfPages, pageNum));
   currentPdfPage = pageNum;
   updatePdfPageUI();
@@ -282,37 +296,52 @@ function scrollToPdfPage(pageNum) {
     const viewportEl = $('pdf-scroll-viewport');
     const wrap = $(`pdf-page-wrap-${pageNum}`);
     if (viewportEl && wrap) {
-      // Calculate wrap center relative to viewport center
-      const wrapRect = wrap.getBoundingClientRect();
-      const vpRect = viewportEl.getBoundingClientRect();
-      const currentScrollTop = viewportEl.scrollTop;
-      const wrapCenter = wrapRect.top + (wrapRect.height / 2);
-      const vpCenter = vpRect.top + (vpRect.height / 2);
-      const delta = wrapCenter - vpCenter;
+      isProgrammaticScrolling = true;
+      if (programmaticScrollTimer) clearTimeout(programmaticScrollTimer);
 
-      viewportEl.scrollTo({
-        top: Math.max(0, currentScrollTop + delta),
-        behavior: 'smooth'
-      });
-      wrap.classList.add('active-page');
-      setTimeout(() => wrap.classList.remove('active-page'), 1500);
+      // Temporarily disable CSS scroll-snap so browser doesn't clamp intermediate scroll
+      viewportEl.style.scrollSnapType = 'none';
+
+      // Calculate target scrollTop centering wrap in viewport
+      const targetTop = Math.max(0, wrap.offsetTop - Math.max(0, (viewportEl.clientHeight - wrap.offsetHeight) / 2));
+
+      if (smooth) {
+        viewportEl.scrollTo({ top: targetTop, behavior: 'smooth' });
+      } else {
+        viewportEl.scrollTop = targetTop;
+      }
+
+      const allWrappers = viewportEl.querySelectorAll('.pdf-page-wrapper');
+      allWrappers.forEach(w => w.classList.toggle('active-page', parseInt(w.dataset.page, 10) === pageNum));
+
+      // Immediately render target page without waiting for debounce
+      renderSinglePage(pageNum);
+      scheduleVisiblePagesRender();
+
+      programmaticScrollTimer = setTimeout(() => {
+        viewportEl.style.scrollSnapType = 'y mandatory';
+        isProgrammaticScrolling = false;
+        // Sync final page position
+        onPdfViewportScroll();
+      }, smooth ? 250 : 80);
     }
-    scheduleVisiblePagesRender();
   } else {
     // Fallback for iframe mode
     goToPdfPageIframe(pageNum);
   }
+
+  saveCurrentViewState();
 }
 
 function nextPdfPage() {
   if (currentPdfPage < totalPdfPages) {
-    scrollToPdfPage(currentPdfPage + 1);
+    scrollToPdfPage(currentPdfPage + 1, false);
   }
 }
 
 function prevPdfPage() {
   if (currentPdfPage > 1) {
-    scrollToPdfPage(currentPdfPage - 1);
+    scrollToPdfPage(currentPdfPage - 1, false);
   }
 }
 
@@ -331,7 +360,7 @@ function goToPdfPageIframe(pageNum) {
   }
 }
 
-async function openFile(file, title, breadcrumb, button) {
+async function openFile(file, title, breadcrumb, button, initialPage = 1) {
   if (!file.path || !String(file.name || file.path).toLowerCase().endsWith('.pdf')) return;
   if (activeModule !== 'study') {
     switchModule('study');
@@ -341,7 +370,7 @@ async function openFile(file, title, breadcrumb, button) {
   button?.classList.add('selected');
 
   currentDoc = file.path;
-  currentPdfPage = 1;
+  currentPdfPage = initialPage || 1;
   totalPdfPages = 1;
   updatePdfPageUI();
 
@@ -360,6 +389,7 @@ async function openFile(file, title, breadcrumb, button) {
 
   updateBookmarkButton();
   recordRecentFile(file.path, title, breadcrumb);
+  saveCurrentViewState();
 
   const url = fileURL(file.path);
 
@@ -390,11 +420,15 @@ async function openFile(file, title, breadcrumb, button) {
       buildPagePlaceholders();
       updatePdfZoomUI();
       updatePdfPageUI();
-      scheduleVisiblePagesRender();
 
-      if (viewportEl) {
-        viewportEl.scrollTop = 0;
-        viewportEl.focus();
+      if (initialPage && initialPage > 1) {
+        scrollToPdfPage(initialPage, false);
+      } else {
+        scheduleVisiblePagesRender();
+        if (viewportEl) {
+          viewportEl.scrollTop = 0;
+          viewportEl.focus();
+        }
       }
       button?.blur();
 
@@ -409,7 +443,7 @@ async function openFile(file, title, breadcrumb, button) {
   $('pdf-stage')?.classList.add('hidden');
   const viewer = $('pdf-viewer');
   if (viewer) {
-    viewer.src = `${url}#page=1`;
+    viewer.src = `${url}#page=${initialPage || 1}`;
     viewer.classList.remove('hidden');
   }
 }
@@ -631,6 +665,7 @@ $('btn-pdf-prev')?.addEventListener('click', e => {
   e.stopPropagation();
   prevPdfPage();
   e.currentTarget?.blur();
+  $('pdf-scroll-viewport')?.focus();
 });
 
 $('btn-pdf-next')?.addEventListener('click', e => {
@@ -638,17 +673,48 @@ $('btn-pdf-next')?.addEventListener('click', e => {
   e.stopPropagation();
   nextPdfPage();
   e.currentTarget?.blur();
+  $('pdf-scroll-viewport')?.focus();
 });
 
-$('pdf-page-indicator')?.addEventListener('click', () => {
-  const maxP = totalPdfPages > 1 ? totalPdfPages : 999;
-  const val = prompt(`Go to page (1 - ${maxP}):`, String(currentPdfPage));
-  if (val) {
-    const num = parseInt(val, 10);
-    if (!isNaN(num) && num >= 1) {
-      goToPdfPage(num);
+// Wire up PDF Page Input & Indicator
+const pageInputEl = $('pdf-page-input');
+if (pageInputEl) {
+  pageInputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      const val = parseInt(pageInputEl.value, 10);
+      if (!isNaN(val) && val >= 1) {
+        goToPdfPage(val);
+      }
+      pageInputEl.blur();
+      $('pdf-scroll-viewport')?.focus();
     }
-  }
+  });
+
+  pageInputEl.addEventListener('change', () => {
+    const val = parseInt(pageInputEl.value, 10);
+    if (!isNaN(val) && val >= 1) {
+      goToPdfPage(val);
+    }
+    pageInputEl.blur();
+    $('pdf-scroll-viewport')?.focus();
+  });
+
+  pageInputEl.addEventListener('focus', () => {
+    pageInputEl.select();
+  });
+}
+
+$('pdf-page-total')?.addEventListener('click', () => {
+  pageInputEl?.focus();
+  pageInputEl?.select();
+});
+
+$('pdf-page-indicator')?.addEventListener('click', e => {
+  if (e.target && e.target.id === 'pdf-page-input') return;
+  pageInputEl?.focus();
+  pageInputEl?.select();
 });
 
 // Viewport Scroll & Trackpad Pinch-to-Zoom
@@ -882,11 +948,74 @@ $('apply-minutes')?.addEventListener('click', () => {
 updateTimerUI();
 
 // =========================================================
-// 3. BOOKMARKS & RECENT
+// 3. BOOKMARKS, RECENT & STATE PERSISTENCE
 // =========================================================
 
 let bookmarks = JSON.parse(localStorage.getItem('betterpesu-bookmarks') || '[]');
 let recent = JSON.parse(localStorage.getItem('betterpesu-recent') || '[]');
+const bookmarksMeta = new Map();
+const recentMeta = new Map();
+
+let stateSaveTimer = null;
+function saveCurrentViewState() {
+  if (!currentDoc) return;
+  if (stateSaveTimer) clearTimeout(stateSaveTimer);
+  stateSaveTimer = setTimeout(() => {
+    const statePayload = {
+      last_doc: currentDoc,
+      last_title: $('document-title')?.textContent || '',
+      last_breadcrumb: $('document-path')?.textContent || '',
+      last_page: currentPdfPage || 1,
+      active_tab: activeLibraryTab || 'library'
+    };
+    try { localStorage.setItem('betterpesu-state', JSON.stringify(statePayload)); } catch (_) {}
+    fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(statePayload)
+    }).catch(() => {});
+  }, 350);
+}
+
+async function loadBookmarksAndRecent() {
+  try {
+    const [bmsRes, recRes] = await Promise.all([
+      fetch('/api/bookmarks', { cache: 'no-store' }),
+      fetch('/api/recent', { cache: 'no-store' })
+    ]);
+    if (bmsRes.ok) {
+      const bmsData = await bmsRes.json();
+      if (Array.isArray(bmsData.bookmarks)) {
+        bookmarks = [];
+        bookmarksMeta.clear();
+        bmsData.bookmarks.forEach(bm => {
+          bookmarks.push(bm.file_path);
+          bookmarksMeta.set(bm.file_path, bm);
+        });
+        try { localStorage.setItem('betterpesu-bookmarks', JSON.stringify(bookmarks)); } catch (_) {}
+      }
+    }
+    if (recRes.ok) {
+      const recData = await recRes.json();
+      if (Array.isArray(recData.recent)) {
+        recent = [];
+        recentMeta.clear();
+        recData.recent.forEach(r => {
+          recent.push(r.file_path);
+          recentMeta.set(r.file_path, r);
+        });
+        try { localStorage.setItem('betterpesu-recent', JSON.stringify(recent)); } catch (_) {}
+      }
+    }
+  } catch (err) {
+    console.warn('Could not sync bookmarks/recent from backend:', err);
+  }
+
+  updateBookmarkButton();
+  if (activeLibraryTab !== 'library') {
+    renderPersonalSide();
+  }
+}
 
 function indexCourses() {
   catalog.clear();
@@ -921,49 +1050,122 @@ function updateBookmarkButton() {
   button.textContent = bookmarks.includes(currentDoc) ? '★ Saved' : '☆ Save';
 }
 
-$('bookmark-current')?.addEventListener('click', () => {
+$('bookmark-current')?.addEventListener('click', async () => {
   if (!currentDoc) return;
-  if (bookmarks.includes(currentDoc)) {
+  const wasBookmarked = bookmarks.includes(currentDoc);
+  const action = wasBookmarked ? 'remove' : 'add';
+
+  if (wasBookmarked) {
     bookmarks = bookmarks.filter(p => p !== currentDoc);
+    bookmarksMeta.delete(currentDoc);
   } else {
-    bookmarks = [...bookmarks, currentDoc];
+    bookmarks = [currentDoc, ...bookmarks.filter(p => p !== currentDoc)];
+    bookmarksMeta.set(currentDoc, {
+      file_path: currentDoc,
+      title: $('document-title')?.textContent || currentDoc,
+      breadcrumb: $('document-path')?.textContent || '',
+      page_number: currentPdfPage || 1
+    });
   }
-  localStorage.setItem('betterpesu-bookmarks', JSON.stringify(bookmarks));
+
+  try { localStorage.setItem('betterpesu-bookmarks', JSON.stringify(bookmarks)); } catch (_) {}
   updateBookmarkButton();
   if (activeLibraryTab === 'bookmarks') renderPersonalSide();
+
+  try {
+    const res = await fetch('/api/bookmarks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        file_path: currentDoc,
+        title: $('document-title')?.textContent || '',
+        breadcrumb: $('document-path')?.textContent || '',
+        page_number: currentPdfPage || 1,
+        action: action
+      })
+    });
+    const result = await res.json();
+    if (result && result.bookmarked !== undefined) {
+      if (result.bookmarked && !bookmarks.includes(currentDoc)) {
+        bookmarks.unshift(currentDoc);
+      } else if (!result.bookmarked && bookmarks.includes(currentDoc)) {
+        bookmarks = bookmarks.filter(p => p !== currentDoc);
+      }
+      updateBookmarkButton();
+      if (activeLibraryTab === 'bookmarks') renderPersonalSide();
+    }
+  } catch (err) {
+    console.warn('Failed to persist bookmark to server:', err);
+  }
 });
 
 function recordRecentFile(path, title, breadcrumb) {
-  recent = [path, ...recent.filter(p => p !== path)].slice(0, 20);
-  localStorage.setItem('betterpesu-recent', JSON.stringify(recent));
+  if (!path) return;
+  recent = [path, ...recent.filter(p => p !== path)].slice(0, 30);
+  recentMeta.set(path, {
+    file_path: path,
+    title: title || (catalog.get(path)?.title) || path,
+    breadcrumb: breadcrumb || (catalog.get(path)?.breadcrumb) || '',
+    last_page: currentPdfPage || 1
+  });
+
+  try { localStorage.setItem('betterpesu-recent', JSON.stringify(recent)); } catch (_) {}
+
   fetch('/api/recent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ file_path: path, title, breadcrumb })
+    body: JSON.stringify({
+      file_path: path,
+      title: title || '',
+      breadcrumb: breadcrumb || '',
+      last_page: currentPdfPage || 1
+    })
   }).catch(() => {});
+
   if (activeLibraryTab === 'recent') renderPersonalSide();
 }
 
 function renderPersonalSide() {
   const side = $('personal-side');
+  if (!side) return;
   side.replaceChildren();
-  const paths = activeLibraryTab === 'bookmarks' ? bookmarks : recent;
+  const isBookmarks = activeLibraryTab === 'bookmarks';
+  const paths = isBookmarks ? bookmarks : recent;
 
   let shown = 0;
   for (const path of paths) {
-    const entry = catalog.get(path);
-    if (!entry) continue;
+    let entry = catalog.get(path);
+    const meta = isBookmarks ? bookmarksMeta.get(path) : recentMeta.get(path);
+
+    // Try normalized match in catalog
+    if (!entry) {
+      const cleanPath = path.replace(/^slides[\\/]/i, '').replace(/^[\\/]/, '');
+      for (const [catPath, catEntry] of catalog.entries()) {
+        const cleanCat = catPath.replace(/^slides[\\/]/i, '').replace(/^[\\/]/, '');
+        if (cleanCat === cleanPath) {
+          entry = catEntry;
+          break;
+        }
+      }
+    }
+
+    const title = entry?.title || meta?.title || path.split(/[\\/]/).pop() || path;
+    const breadcrumb = entry?.breadcrumb || meta?.breadcrumb || '';
+    const fileObj = entry?.file || { path: path, name: title };
+    const targetPage = meta?.page_number || meta?.last_page || 1;
+
     shown++;
-    const b = createButton('nav-file', entry.title, () => {
-      openFile(entry.file, entry.title, entry.breadcrumb, b);
+    const b = createButton('nav-file', title, () => {
+      openFile(fileObj, title, breadcrumb, b, targetPage);
     });
+    b.title = `${title}${breadcrumb ? ' (' + breadcrumb + ')' : ''}`;
     side.append(b);
   }
 
   if (!shown) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = activeLibraryTab === 'bookmarks'
+    empty.textContent = isBookmarks
       ? 'No saved PDFs yet. Open a PDF and tap ☆ Save.'
       : 'No recently viewed PDFs yet.';
     side.append(empty);
@@ -982,6 +1184,49 @@ function selectLibraryTab(tab) {
   $('personal-side').hidden = isLib;
 
   if (!isLib) renderPersonalSide();
+  saveCurrentViewState();
+}
+
+async function restoreSavedState() {
+  try {
+    let saved = null;
+    try {
+      const local = localStorage.getItem('betterpesu-state');
+      if (local) saved = JSON.parse(local);
+    } catch (_) {}
+
+    const res = await fetch('/api/state', { cache: 'no-store' });
+    if (res.ok) {
+      const serverState = await res.json();
+      if (serverState && (serverState.last_doc || serverState.active_tab)) {
+        saved = { ...saved, ...serverState };
+      }
+    }
+
+    if (saved && saved.active_tab && saved.active_tab !== 'library') {
+      selectLibraryTab(saved.active_tab);
+    }
+
+    if (saved && saved.last_doc) {
+      let entry = catalog.get(saved.last_doc);
+      if (!entry) {
+        const cleanSaved = saved.last_doc.replace(/^slides[\\/]/i, '').replace(/^[\\/]/, '');
+        for (const [cPath, cEntry] of catalog.entries()) {
+          if (cPath.replace(/^slides[\\/]/i, '').replace(/^[\\/]/, '') === cleanSaved) {
+            entry = cEntry;
+            break;
+          }
+        }
+      }
+      const fileObj = entry?.file || { path: saved.last_doc, name: saved.last_title || 'Lecture PDF' };
+      const title = saved.last_title || entry?.title || 'Lecture PDF';
+      const crumb = saved.last_breadcrumb || entry?.breadcrumb || '';
+      const page = saved.last_page || 1;
+      await openFile(fileObj, title, crumb, null, page);
+    }
+  } catch (err) {
+    console.warn('Could not restore saved app state:', err);
+  }
 }
 
 $('tab-library')?.addEventListener('click', () => selectLibraryTab('library'));
@@ -2416,14 +2661,25 @@ updateSyncStatus();
 // 12. INITIALIZATION
 // =========================================================
 
-fetch('/api/courses')
-  .then(r => r.json())
-  .then(data => {
-    courses = data;
-    indexCourses();
-    renderNavigation($('search').value);
-    if (activeLibraryTab !== 'library') renderPersonalSide();
-  })
-  .catch(console.error);
+async function initApplication() {
+  try {
+    const res = await fetch('/api/courses');
+    if (res.ok) {
+      courses = await res.json();
+      indexCourses();
+      renderNavigation($('search').value);
+    }
+  } catch (err) {
+    console.error('Failed to load courses:', err);
+  }
 
-checkSystemAndAuth();
+  // Load saved bookmarks & recent documents from backend DB
+  await loadBookmarksAndRecent();
+
+  // Restore previous session state (last viewed doc, page number, active tab)
+  await restoreSavedState();
+
+  checkSystemAndAuth();
+}
+
+initApplication();
