@@ -53,6 +53,12 @@ Once copied, launch it via:
 - **Finder:** Open `/Applications/Better PESU Acad.app`.
 - **Terminal:** `open -a "Better PESU Acad"`
 
+### Installing on Windows (One-Click Setup)
+1. Download `BetterPESU-Setup.exe` from the latest GitHub Release.
+2. Double-click `BetterPESU-Setup.exe` and follow the prompt (no administrator permissions required).
+3. The app will be installed to your local programs folder, with Desktop and Start Menu shortcuts automatically created.
+4. Launch via Start Menu / Search: **Better PESU Acad**.
+
 ### Running from Source
 ```bash
 # 1. Install dependencies
@@ -85,15 +91,18 @@ To launch:
 open "dist/Better PESU Acad.app"
 ```
 
-### Windows (Executable)
+### Windows (Executable & Setup Wizard)
 Run on Windows 10/11:
 ```cmd
 scripts\build_windows.bat
 ```
-The standalone executable will be located at:
-```text
-dist\BetterPESU\BetterPESU.exe
+The standalone executable folder will be located at `dist\BetterPESU\BetterPESU.exe`.
+
+To build the one-click installer (`BetterPESU-Setup.exe`):
+```cmd
+iscc installer.iss
 ```
+The installer will be generated at `dist-installer\BetterPESU-Setup.exe`. Alternatively, run the automated **Build Windows Installer** workflow on GitHub Actions.
 
 ### Linux (Binary)
 Run on Linux:

@@ -50,6 +50,12 @@ if sys.platform == 'darwin':
         'Foundation',
         'Quartz',
     ]
+elif sys.platform == 'win32':
+    hiddenimports += [
+        'clr',
+        'webview.platforms.winforms',
+        'webview.platforms.edgechromium',
+    ]
 
 a = Analysis(
     ['app.py'],

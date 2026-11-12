@@ -43,6 +43,7 @@ __pycache__/
 # Build & packaging
 build/
 dist/
+dist-installer/
 *.spec.bak
 
 # OS specific
